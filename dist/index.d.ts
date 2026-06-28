@@ -5,6 +5,8 @@ export { createAgent } from "./server.js";
 export type { AgentOptions, ServiceDef, SyncService, JobService, SyncContext, } from "./server.js";
 export { startJob } from "./jobhost.js";
 export type { JobContext, JobHandler } from "./jobhost.js";
+export { log } from "./log.js";
+export type { Logger, LogContext, Level } from "./log.js";
 export { runLoop } from "./loop.js";
 export type { RunLoopOptions, LoopCtx, IterationResult, LoopResult } from "./loop.js";
 export { z, toJsonSchema } from "./schema.js";

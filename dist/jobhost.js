@@ -4,6 +4,7 @@
 // `POST /api/v1/jobs/:id/report`. Cancellation is delivered on each report's
 // response (`cancelRequested`), Temporal-style.
 import { env } from "./env.js";
+import { log } from "./log.js";
 const HEARTBEAT_MS = 30_000;
 async function report(jobId, body, ac) {
     try {
@@ -23,20 +24,32 @@ async function report(jobId, body, ac) {
 /** Run a dispatched job to completion, reporting to the hub. Never throws. */
 export async function startJob(jobId, input, handler) {
     const ac = new AbortController();
+    // Job-scoped logger: every ctx.log/ctx.progress also lands in Loki under this
+    // job id (agents-interface §15), in addition to the hub job-event report.
+    const jlog = log.child({ job: jobId });
     const ctx = {
         jobId,
         signal: ac.signal,
-        progress: (data, message) => report(jobId, { kind: "progress", data, message }, ac),
-        log: (line) => report(jobId, { kind: "log", line }, ac),
+        progress: (data, message) => {
+            jlog.event("job.progress", message ?? "progress", { data });
+            return report(jobId, { kind: "progress", data, message }, ac);
+        },
+        log: (line) => {
+            jlog.info(line);
+            return report(jobId, { kind: "log", line }, ac);
+        },
     };
     const hb = setInterval(() => void report(jobId, { kind: "heartbeat" }, ac), HEARTBEAT_MS);
+    jlog.event("job.start", "job started");
     try {
         const result = await handler(input, ctx);
+        jlog.event("job.succeeded", "job done");
         await report(jobId, { kind: "succeeded", result: result ?? {} }, ac);
     }
     catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         const code = ac.signal.aborted ? "cancelled" : "error";
+        jlog.error(message, { event: "job.failed", code });
         await report(jobId, { kind: "failed", error: { code, message } }, ac);
     }
     finally {

@@ -14,5 +14,6 @@ export { env } from "./env.js";
 export { HubClient, hub } from "./client.js";
 export { createAgent } from "./server.js";
 export { startJob } from "./jobhost.js";
+export { log } from "./log.js";
 export { runLoop } from "./loop.js";
 export { z, toJsonSchema } from "./schema.js";
