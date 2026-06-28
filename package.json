@@ -10,8 +10,7 @@
   },
   "files": ["dist", "src"],
   "scripts": {
-    "build": "tsc",
-    "prepare": "tsc"
+    "build": "tsc"
   },
   "dependencies": {
     "hono": "^4.6.14",
