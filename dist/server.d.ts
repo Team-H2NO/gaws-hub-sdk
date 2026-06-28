@@ -39,6 +39,13 @@ export interface AgentOptions {
     static?: string;
     /** Extra fields merged into GET /config. */
     config?: Record<string, unknown>;
+    /**
+     * Provider-side activity feed (default on). Auto-wraps every `job` handler so its
+     * lifecycle/progress also lands in an in-process feed, and serves it at
+     * `GET /api/served` (the SSE the workbench UI opens on load, so a cold-started
+     * provider always shows what it is running). Set `false` to opt out.
+     */
+    feed?: boolean;
 }
 export declare function createAgent(opts: AgentOptions): Hono;
 export {};

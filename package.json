@@ -1,16 +1,18 @@
 {
   "name": "@gaws-hub/sdk",
-  "version": "0.2.0",
-  "description": "SDK for building and calling gaws-hub agents: the service contract (sync + job services), hub-brokered bus/store, and a Hono agent server with a built-in job host.",
+  "version": "0.3.0",
+  "description": "SDK for building and calling gaws-hub agents: the service contract (sync + job services), hub-brokered bus/store, a Hono agent server with a built-in job host, a claude -p runner, a provider-side activity feed, and a reusable workbench UI kit.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./web/*": "./web/*"
   },
   "files": ["dist", "src", "web"],
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "node --test"
   },
   "dependencies": {
     "hono": "^4.6.14",

@@ -57,12 +57,33 @@ const msgs = await hub.busPull("demo");
 You never handle instance ids: `invoke`/`runJob` address by **service name**; the
 hub picks a free provider or cold-starts one.
 
+## Batteries — the common agent machinery
+
+- **`runClaude(input, ctx, opts?)`** — run `claude -p` and surface its stream-json as
+  live job progress, a compact status snapshot (for a UI bar), and §15 structured logs;
+  resolves with the final summary. A `run-claude` job handler is one line:
+  `handler: (i, ctx) => runClaude(i, ctx, { defaultTask })`. Low-level pieces
+  (`claudeArgv`, `claudeEventToLogs`, `cleanModel`, `cleanEffort`, `summarize`,
+  `MODELS`, `EFFORTS`) are exported for agents that compose their own loop (per-step
+  models, `--max-turns`, the codex binary…); `opts.argv`/`bin`/`status` are the hooks.
+- **provider-side feed** (default on; opt out with `createAgent({ feed:false })`) —
+  auto-wraps every `job` handler so its lifecycle/progress also lands in an in-process
+  feed, served at `GET /api/served` (SSE). So a cold-started provider's own page shows
+  what it's running. `feed` / `served(name, handler)` are exported for manual use.
+- **workbench UI kit** — served at `/_gaws/agent-ui.{js,css}`. Import it from your page
+  (`import { createRunBars, openSSE, jobDedup, persistFields, markdown } from
+  "./_gaws/agent-ui.js"`) for per-run status bars + a detail modal, minimal markdown,
+  cross-stream job dedup, and Setup persistence — no build step.
+
 ## Surface
 
-- `createAgent(opts)` → Hono app with `/healthz`, `/meta`, `/config`, static assets,
-  SIGTERM, and your sync/job service routes (job routes run via the job host).
+- `createAgent(opts)` → Hono app with `/healthz`, `/meta`, `/config`, `/api/served`
+  (feed), `/_gaws/*` (UI kit), static assets, SIGTERM, and your sync/job service routes
+  (job routes run via the job host).
 - `hub` / `HubClient`: `discover`, `invoke`, `submitJob`, `runJob`, `getJob`,
   `streamJob`, `cancelJob`, `jobResult`, `busPublish`, `busPull`, `storeGet`, `storePut`.
+- `runClaude`, `claudeArgv`, `claudeEventToLogs`, `cleanModel`, `cleanEffort`,
+  `summarize`, `MODELS`, `EFFORTS`; `feed`, `served`; `log`, `runLoop`.
 - `z`, `toJsonSchema` (zod 4 → JSON Schema for manifest descriptors).
 
 Reads `HUB_URL` / `BUS_URL` / `STORE_URL` / `BUS_TOKEN` / `GAWS_HUB_INSTANCE` /

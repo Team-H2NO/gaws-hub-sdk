@@ -8,8 +8,12 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
+import { streamSSE } from "hono/streaming";
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { env } from "./env.js";
 import { startJob, type JobContext } from "./jobhost.js";
+import { served, feed } from "./feed.js";
 
 /** Anything with a zod-style `.safeParse` (kept duck-typed to avoid a hard zod dep). */
 interface Validator {
@@ -51,11 +55,19 @@ export interface AgentOptions {
   static?: string;
   /** Extra fields merged into GET /config. */
   config?: Record<string, unknown>;
+  /**
+   * Provider-side activity feed (default on). Auto-wraps every `job` handler so its
+   * lifecycle/progress also lands in an in-process feed, and serves it at
+   * `GET /api/served` (the SSE the workbench UI opens on load, so a cold-started
+   * provider always shows what it is running). Set `false` to opt out.
+   */
+  feed?: boolean;
 }
 
 export function createAgent(opts: AgentOptions): Hono {
   const app = new Hono();
   const services = opts.services ?? [];
+  const feedOn = opts.feed !== false;
 
   app.get("/healthz", (c) => c.text("ok"));
   app.get("/meta", (c) =>
@@ -88,19 +100,39 @@ export function createAgent(opts: AgentOptions): Hono {
         }
       });
     } else {
-      // Job dispatch: ack fast (202), run detached via the job host.
+      // Job dispatch: ack fast (202), run detached via the job host. When the feed
+      // is on, wrap the handler so its progress also reaches GET /api/served.
+      const handler = feedOn ? served(svc.name, svc.handler) : svc.handler;
       app.post(svc.path, async (c) => {
         const jobId = c.req.header("x-gaws-job");
         if (!jobId) return c.json({ error: "missing x-gaws-job (dispatch only via the hub job API)" }, 400);
         const input = await readBody(c);
         const checked = validate(svc.request, input);
         if (!checked.ok) return c.json({ error: checked.error }, 400);
-        void startJob(jobId, checked.value, svc.handler);
+        void startJob(jobId, checked.value, handler);
         return c.json({ accepted: true, jobId }, 202);
       });
     }
   }
 
+  // Provider-side activity feed: stream the local feed (backlog first, then live).
+  if (feedOn) {
+    app.get("/api/served", (c) =>
+      streamSSE(c, async (stream) => {
+        const pending = [...feed.recent()];                 // backlog first
+        let alive = true;
+        const unsub = feed.subscribe((e) => pending.push(e));
+        stream.onAbort(() => { alive = false; unsub(); });
+        while (alive) {
+          while (pending.length) await stream.writeSSE({ event: "served", data: JSON.stringify(pending.shift()) });
+          await stream.sleep(300);                           // drain ~3×/s; avoids concurrent writes
+        }
+        unsub();
+      }),
+    );
+  }
+
+  serveSdkWeb(app); // reusable UI kit at /_gaws/* (status bars, modal, markdown, persistence)
   opts.routes?.(app);
   if (opts.static) app.get("/*", serveStatic({ root: opts.static }));
 
@@ -134,4 +166,31 @@ function validate(schema: Validator | undefined, input: unknown): { ok: true; va
   const r = schema.safeParse(input);
   if (r.success) return { ok: true, value: r.data ?? input };
   return { ok: false, error: `invalid request: ${JSON.stringify(r.error)}` };
+}
+
+const CONTENT_TYPES: Record<string, string> = {
+  js: "text/javascript; charset=utf-8",
+  css: "text/css; charset=utf-8",
+  html: "text/html; charset=utf-8",
+  json: "application/json; charset=utf-8",
+};
+
+// Serve the SDK's reusable web kit (web/*) at /_gaws/<file>, read once at startup.
+// An agent UI imports it relatively (it shares the agent's origin under /a/<id>/),
+// so a new agent gets the status-bar/modal/markdown engine without a build step.
+function serveSdkWeb(app: Hono): void {
+  let dir: string, files: string[];
+  try {
+    dir = fileURLToPath(new URL("../web/", import.meta.url));
+    files = readdirSync(dir);
+  } catch {
+    return; // no kit shipped (shouldn't happen) — agents can still ship their own UI.
+  }
+  for (const name of files) {
+    let body: string;
+    try { body = readFileSync(dir + name, "utf8"); } catch { continue; }
+    const ext = name.split(".").pop() || "";
+    const ct = CONTENT_TYPES[ext] ?? "application/octet-stream";
+    app.get(`/_gaws/${name}`, (c) => c.body(body, 200, { "content-type": ct }));
+  }
 }

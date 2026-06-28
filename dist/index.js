@@ -16,4 +16,6 @@ export { createAgent } from "./server.js";
 export { startJob } from "./jobhost.js";
 export { log } from "./log.js";
 export { runLoop } from "./loop.js";
+export { runClaude, claudeArgv, claudeEventToLogs, cleanModel, cleanEffort, summarize, MODELS, EFFORTS } from "./claude.js";
+export { feed, served } from "./feed.js";
 export { z, toJsonSchema } from "./schema.js";
