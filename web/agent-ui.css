@@ -45,7 +45,9 @@
 .gaws-ask-head button { padding: 0 .5rem; }
 .gaws-ask-head button:hover { border-color: #3a4255; background: #222a3d; }
 .gaws-ask-x { width: 1.7rem; padding: 0; }
-.gaws-ask-width { padding: 0 .15rem; text-align: center; }
+/* width:auto defends against host pages that style bare `select{width:100%}` (it would
+   otherwise balloon the picker and squeeze the title). */
+.gaws-ask-width { width: auto; padding: 0 .15rem; text-align: center; }
 .gaws-ask-msgs { flex: 1 1 auto; overflow: auto; padding: .9rem; display: flex; flex-direction: column; gap: .7rem; }
 .gaws-ask-empty { color: var(--mut, #6b7394); font-size: .85rem; margin: auto; text-align: center; padding: 1rem; }
 .gaws-ask-msg { max-width: 92%; padding: .55rem .75rem; border-radius: .6rem; font-size: .86rem; line-height: 1.5; white-space: normal; word-wrap: break-word; }
