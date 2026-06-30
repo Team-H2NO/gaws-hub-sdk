@@ -154,6 +154,30 @@ export class HubClient {
             return null;
         return r.text();
     }
+    // --- presence -------------------------------------------------------
+    /**
+     * Advertise this instance's display label / current activity to the hub — shown
+     * in the launcher sidebar (label replaces the opaque id; activity replaces the
+     * docker status). Identity is the instance's BUS_TOKEN, so it can only set its
+     * OWN presence. Pass `""` to clear a field; omit a field to leave it unchanged.
+     *
+     * Best-effort: a no-op without a token (local / untrusted runs) and never throws
+     * into the caller — presence must not break the agent's real work.
+     */
+    async presence(p) {
+        if (!this.token)
+            return;
+        try {
+            await fetch(`${this.hubUrl}/api/presence`, {
+                method: "POST",
+                headers: { "content-type": "application/json", ...this.auth() },
+                body: JSON.stringify(p),
+            });
+        }
+        catch {
+            // swallow — presence is advisory.
+        }
+    }
 }
 /** A client wired from the injected environment. */
 export const hub = new HubClient();

@@ -52,6 +52,8 @@ console.log(job.result?.output);
 
 await hub.busPublish("demo", { k: "v" });                       // hub-brokered bus
 const msgs = await hub.busPull("demo");
+
+await hub.presence({ label: "acme-bot", activity: "iter 1/5 · build" }); // sidebar label + live status
 ```
 
 You never handle instance ids: `invoke`/`runJob` address by **service name**; the
@@ -109,7 +111,8 @@ hub picks a free provider or cold-starts one.
   (feed), `/_gaws/*` (UI kit), static assets, SIGTERM, and your sync/job service routes
   (job routes run via the job host).
 - `hub` / `HubClient`: `discover`, `invoke`, `submitJob`, `runJob`, `getJob`,
-  `streamJob`, `cancelJob`, `jobResult`, `busPublish`, `busPull`, `storeGet`, `storePut`.
+  `streamJob`, `cancelJob`, `jobResult`, `busPublish`, `busPull`, `storeGet`, `storePut`,
+  `presence` (advertise a sidebar label + live activity; best-effort, no-op without a token).
 - `runClaude`, `claudeArgv`, `claudeEventToLogs`, `cleanModel`, `cleanEffort`,
   `summarize`, `MODELS`, `EFFORTS`; `feed`, `served`; `log`, `runLoop`.
 - `z`, `toJsonSchema` (zod 4 → JSON Schema for manifest descriptors).

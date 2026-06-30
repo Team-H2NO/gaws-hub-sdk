@@ -2,7 +2,7 @@
 // the built dist (what consumers get). Run: npm test.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cleanModel, cleanEffort, claudeArgv, claudeEventToLogs, summarize, feed, served, runClaude } from "../dist/index.js";
+import { cleanModel, cleanEffort, claudeArgv, claudeEventToLogs, summarize, feed, served, runClaude, HubClient } from "../dist/index.js";
 
 test("cleanModel / cleanEffort fall back sensibly", () => {
   assert.equal(cleanModel("opus"), "opus");
@@ -107,4 +107,25 @@ test("runClaude: parses stream-json into summary + live status (fake bin)", asyn
   const last = progress.at(-1).d.status;            // result event's snapshot carries the final text
   assert.equal(last.state, "done");
   assert.equal(last.text, "all done");
+});
+
+test("hub.presence: no-ops without a token, POSTs with bearer when set", async () => {
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => { calls.push({ url, opts }); return { ok: true, status: 204, text: async () => "" }; };
+  try {
+    // no token -> never calls fetch
+    await new HubClient("http://hub:3000", "", "", "").presence({ label: "x", activity: "y" });
+    assert.equal(calls.length, 0);
+
+    // with token -> one POST to /api/presence, bearer header, JSON body
+    await new HubClient("http://hub:3000", "", "", "tok123").presence({ label: "acme-bot", activity: "iter 1/5 · build" });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "http://hub:3000/api/presence");
+    assert.equal(calls[0].opts.method, "POST");
+    assert.equal(calls[0].opts.headers.authorization, "Bearer tok123");
+    assert.deepEqual(JSON.parse(calls[0].opts.body), { label: "acme-bot", activity: "iter 1/5 · build" });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

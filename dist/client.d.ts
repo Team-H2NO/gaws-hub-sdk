@@ -39,6 +39,19 @@ export declare class HubClient {
     busPull<T = unknown>(topic: string): Promise<T[]>;
     storePut(key: string, value: unknown): Promise<boolean>;
     storeGet(key: string): Promise<string | null>;
+    /**
+     * Advertise this instance's display label / current activity to the hub — shown
+     * in the launcher sidebar (label replaces the opaque id; activity replaces the
+     * docker status). Identity is the instance's BUS_TOKEN, so it can only set its
+     * OWN presence. Pass `""` to clear a field; omit a field to leave it unchanged.
+     *
+     * Best-effort: a no-op without a token (local / untrusted runs) and never throws
+     * into the caller — presence must not break the agent's real work.
+     */
+    presence(p: {
+        label?: string | null;
+        activity?: string | null;
+    }): Promise<void>;
 }
 /** A client wired from the injected environment. */
 export declare const hub: HubClient;
