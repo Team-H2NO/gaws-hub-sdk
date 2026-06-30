@@ -66,6 +66,12 @@ hub picks a free provider or cold-starts one.
   (`claudeArgv`, `claudeEventToLogs`, `cleanModel`, `cleanEffort`, `summarize`,
   `MODELS`, `EFFORTS`) are exported for agents that compose their own loop (per-step
   models, `--max-turns`, the codex binary…); `opts.argv`/`bin`/`status` are the hooks.
+  - **Prompts live as files (contract).** Whatever prompt you hand `runClaude`/`claudeArgv`
+    must come from a `prompts/*.md` file loaded at call time, not a string literal baked
+    into source — one `.md` per step, `{{name}}` placeholders for injected values,
+    `--append-system-prompt` text included. This is **§16** of the agent interface
+    (`agents-interface.md`); a three-line `fs.readFileSync` + `{{var}}` replace is the
+    whole loader.
 - **provider-side feed** (default on; opt out with `createAgent({ feed:false })`) —
   auto-wraps every `job` handler so its lifecycle/progress also lands in an in-process
   feed, served at `GET /api/served` (SSE). So a cold-started provider's own page shows
