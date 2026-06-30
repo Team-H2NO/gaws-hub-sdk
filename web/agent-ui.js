@@ -190,9 +190,9 @@ export function createAskPanel(opts = {}) {
   panel.setAttribute("aria-hidden", "true"); panel.setAttribute("aria-label", opts.title || "Ask");
   panel.innerHTML = `<div class="gaws-ask-head">`
     + `<span class="gaws-ask-title">${mdEsc(opts.title || "Ask")} · <span class="gaws-ask-sub"></span></span>`
-    + `<button type="button" class="gaws-ask-new" title="start a fresh conversation (new session)">＋ New Chat</button>`
-    + `<select class="gaws-ask-width" title="panel width"><option value="1/3">⅓ width</option><option value="half">½ width</option><option value="2/3">⅔ width</option><option value="full">Full width</option></select>`
-    + `<button type="button" class="gaws-ask-x" title="close">✕</button></div>`
+    + `<button type="button" class="gaws-ask-new" title="New chat — start a fresh conversation">＋ New</button>`
+    + `<select class="gaws-ask-width" title="panel width"><option value="1/3">⅓</option><option value="half">½</option><option value="2/3">⅔</option><option value="full">⛶</option></select>`
+    + `<button type="button" class="gaws-ask-x" title="close" aria-label="close">✕</button></div>`
     + `<div class="gaws-ask-msgs"></div>`
     + `<form class="gaws-ask-form"><textarea rows="2" autocomplete="off"></textarea><button type="submit" class="gaws-ask-send">Send</button></form>`;
   document.body.appendChild(panel);

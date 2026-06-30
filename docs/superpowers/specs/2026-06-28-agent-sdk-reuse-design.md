@@ -49,9 +49,11 @@ existing `gaws-hub-agent-template:latest` image (version `51acfc6`).
    - Everything else (`/healthz`, `/meta`, `/config`, sync/job routes, SIGTERM) unchanged.
 
 4. **`web/agent-ui.js` + `web/agent-ui.css`** — the reusable UI engine: `markdown()`,
-   the run-bars+modal widget, `persistFields()`, and an SSE `stream()` helper with
-   Last-Event-ID reconnect (folding in the old `job-log.js` idea). Replaces
-   `web/job-log.js` + `web/shell.css` (unused by anyone).
+   the run-bars+modal widget (`createRunBars`), `persistFields()`, and an SSE `openSSE()`
+   helper. Replaces `web/job-log.js` + `web/shell.css` (unused by anyone).
+   - **v0.4.0** added `createAskPanel` — the "Ask" slide-in chat drawer lifted out of the
+     agent-builder so any agent can mount it. Frontend-only: the drawer speaks the
+     `<<<STATUS>>>`/`<<<ASKRESULT>>>` stream contract, each agent keeps its own endpoint.
 
 ## Template after refactor
 

@@ -76,13 +76,32 @@ hub picks a free provider or cold-starts one.
   auto-wraps every `job` handler so its lifecycle/progress also lands in an in-process
   feed, served at `GET /api/served` (SSE). So a cold-started provider's own page shows
   what it's running. `feed` / `served(name, handler)` are exported for manual use.
-- **workbench UI kit** — served at `/_gaws/agent-ui.{js,css}`. Import it from your page
-  (`import { createRunBars, createAskPanel, openSSE, jobDedup, persistFields, markdown } from
-  "./_gaws/agent-ui.js"`) for per-run status bars + a detail modal, an "Ask" slide-in chat
-  panel, minimal markdown, cross-stream job dedup, and Setup persistence — no build step.
-  `createAskPanel({ subtitle, body })` builds a right-edge Q&A drawer that streams a
-  resumable claude turn; its endpoint streams `<<<STATUS>>>` frames + a final
-  `<<<ASKRESULT>>>` line (see the function header for the contract).
+- **workbench UI kit** — served at `/_gaws/agent-ui.{js,css}`, no build step. Import from
+  your page: `import { createRunBars, createAskPanel, openSSE, jobDedup, persistFields,
+  markdown } from "./_gaws/agent-ui.js"`. Gives you per-run status bars + a detail modal,
+  the **"Ask" slide-in chat panel**, minimal markdown, cross-stream job dedup, and Setup
+  persistence.
+  - `createAskPanel(opts)` → a right-edge Q&A drawer with open/close/New-Chat/width all
+    built in; returns `{ open, close, newChat, syncSubtitle, el }`. You supply only a
+    trigger button and a couple of callbacks: `subtitle()` (header label, e.g. the loaded
+    repo) and `body(question, sessionId)` (the POST body for a turn — add whatever context
+    your endpoint needs). Width is remembered in `localStorage`; the long reply scrolls to
+    its **top** so it reads from the start.
+
+    ```js
+    const ask = createAskPanel({
+      subtitle: () => repo() || "no repo",
+      body: (question, sessionId) => ({ repo: repo(), question, sessionId }),
+    });
+    document.getElementById("askbtn").onclick = ask.open;
+    ```
+
+    **Endpoint contract** (`opts.endpoint`, default `api/ask/stream`) — POST a turn, reply
+    with a chunked text stream: zero or more `<<<STATUS>>>{…}` lines (one run snapshot each
+    → the live banner) then one final `<<<ASKRESULT>>>{"answer"|"error","sessionId"}` line.
+    The server owns the session id (first turn mints it, later turns echo it back to
+    `--resume` the same chat). `runClaude`'s `<<<STATUS>>>` frames satisfy this directly —
+    see the agent-builder's `/api/ask/stream` for a reference implementation.
 
 ## Surface
 
@@ -94,6 +113,8 @@ hub picks a free provider or cold-starts one.
 - `runClaude`, `claudeArgv`, `claudeEventToLogs`, `cleanModel`, `cleanEffort`,
   `summarize`, `MODELS`, `EFFORTS`; `feed`, `served`; `log`, `runLoop`.
 - `z`, `toJsonSchema` (zod 4 → JSON Schema for manifest descriptors).
+- UI kit (browser, served at `/_gaws/agent-ui.{js,css}`): `createRunBars`,
+  `createAskPanel`, `openSSE`, `jobDedup`, `persistFields`, `markdown`, `kfmt`, `clock`.
 
 Reads `HUB_URL` / `BUS_URL` / `STORE_URL` / `BUS_TOKEN` / `GAWS_HUB_INSTANCE` /
 `AGENT_NAME` / `PORT` from the environment — never hardcode hostnames.
