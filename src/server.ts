@@ -109,7 +109,7 @@ export function createAgent(opts: AgentOptions): Hono {
         const input = await readBody(c);
         const checked = validate(svc.request, input);
         if (!checked.ok) return c.json({ error: checked.error }, 400);
-        void startJob(jobId, checked.value, handler);
+        void startJob(jobId, checked.value, handler, svc.name);
         return c.json({ accepted: true, jobId }, 202);
       });
     }

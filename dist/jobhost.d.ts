@@ -9,5 +9,12 @@ export interface JobContext {
     log: (line: string) => Promise<void>;
 }
 export type JobHandler = (input: unknown, ctx: JobContext) => Promise<unknown> | unknown;
-/** Run a dispatched job to completion, reporting to the hub. Never throws. */
-export declare function startJob(jobId: string, input: unknown, handler: JobHandler): Promise<void>;
+/**
+ * Run a dispatched job to completion, reporting to the hub. Never throws.
+ *
+ * `service` (the manifest service name) is reported as live **presence** to the
+ * hub launcher sidebar over the job's lifecycle — start → each progress → idle —
+ * so a cold-started provider shows what it's serving even before its own UI loads
+ * (agents-interface §7/§14). Best-effort: a no-op without a BUS_TOKEN.
+ */
+export declare function startJob(jobId: string, input: unknown, handler: JobHandler, service?: string): Promise<void>;

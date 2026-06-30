@@ -140,7 +140,8 @@ export function createRunBars(opts = {}) {
     const secs = ((s.elapsedMs || 0) + live) / 1000;
     b.el.className = "sbar " + (s.state === "running" ? "run" : s.state);
     b.xbtn.title = s.state === "running" ? "cancel run" : "dismiss";
-    b.head.textContent = `${glyph} claude · ${s.model || "?"}  ·  ${jobId.slice(0, 10)}  ·  ${clock(secs)}` + (s.costUsd != null ? `  ·  $${Number(s.costUsd).toFixed(4)}` : "");
+    const cost = s.costUsd != null ? s.costUsd : s.cost; // accept either field name (provider drift)
+    b.head.textContent = `${glyph} claude · ${s.model || "?"}  ·  ${jobId.slice(0, 10)}  ·  ${clock(secs)}` + (cost != null ? `  ·  $${Number(cost).toFixed(4)}` : "");
     const bits = [(s.toolCalls || 0) + " tool" + (s.toolCalls === 1 ? "" : "s")];
     if (s.turns) bits.push(s.turns + " turn" + (s.turns === 1 ? "" : "s"));
     if (s.tokensOut != null) bits.push("↓" + kfmt(s.tokensOut) + " tok");

@@ -2,7 +2,7 @@
 // the built dist (what consumers get). Run: npm test.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cleanModel, cleanEffort, claudeArgv, claudeEventToLogs, summarize, feed, served, runClaude, HubClient } from "../dist/index.js";
+import { cleanModel, cleanEffort, claudeArgv, claudeEventToLogs, summarize, feed, served, runClaude, HubClient, startJob, hub } from "../dist/index.js";
 
 test("cleanModel / cleanEffort fall back sensibly", () => {
   assert.equal(cleanModel("opus"), "opus");
@@ -107,6 +107,32 @@ test("runClaude: parses stream-json into summary + live status (fake bin)", asyn
   const last = progress.at(-1).d.status;            // result event's snapshot carries the final text
   assert.equal(last.state, "done");
   assert.equal(last.text, "all done");
+});
+
+test("startJob: reports service as presence, resets to idle only after the LAST concurrent job", async () => {
+  const acts = [];
+  const realP = hub.presence;
+  const realFetch = globalThis.fetch;
+  hub.presence = async (p) => { acts.push(p.activity); };
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({}) }); // swallow job reports
+  let release1, release2;
+  const gate1 = new Promise((r) => (release1 = r));
+  const gate2 = new Promise((r) => (release2 = r));
+  try {
+    const j1 = startJob("ja", {}, async (i, ctx) => { await ctx.progress({}, "step"); await gate1; }, "build");
+    const j2 = startJob("jb", {}, async () => { await gate2; }, "build");
+    await new Promise((r) => setTimeout(r, 10));
+    assert.ok(acts.includes("build"));            // start → service name as activity
+    assert.ok(acts.includes("build · step"));     // progress → service · message
+    assert.ok(!acts.includes("idle"));            // nothing idle while jobs run
+    release1(); await j1;
+    assert.ok(!acts.includes("idle"));            // j2 still in flight → not idle yet
+    release2(); await j2;
+    assert.equal(acts.filter((a) => a === "idle").length, 1); // idle exactly once, after the last job
+  } finally {
+    hub.presence = realP;
+    globalThis.fetch = realFetch;
+  }
 });
 
 test("hub.presence: no-ops without a token, POSTs with bearer when set", async () => {

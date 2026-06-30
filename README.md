@@ -76,8 +76,14 @@ hub picks a free provider or cold-starts one.
     whole loader.
 - **provider-side feed** (default on; opt out with `createAgent({ feed:false })`) —
   auto-wraps every `job` handler so its lifecycle/progress also lands in an in-process
-  feed, served at `GET /api/served` (SSE). So a cold-started provider's own page shows
-  what it's running. `feed` / `served(name, handler)` are exported for manual use.
+  feed, served at `GET /api/served` (SSE, **replays the running backlog on connect**).
+  So a cold-started provider's own page shows what it's running. `feed` /
+  `served(name, handler)` are exported for manual use.
+- **auto-presence for jobs** — the job host reports **presence** to the hub sidebar
+  over each job's lifecycle (start → every `ctx.progress` → `idle`), so a provider
+  needs no manual `hub.presence` call. Together with the feed this satisfies the
+  contract's "surface what you're serving" rule (agents-interface §14) for free. For a
+  *slow `sync`* service, call `hub.presence({activity})` yourself (sync isn't auto-fed).
 - **workbench UI kit** — served at `/_gaws/agent-ui.{js,css}`, no build step. Import from
   your page: `import { createRunBars, createAskPanel, openSSE, jobDedup, persistFields,
   markdown } from "./_gaws/agent-ui.js"`. Gives you per-run status bars + a detail modal,
