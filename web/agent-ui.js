@@ -10,7 +10,7 @@
 
 // ── number/time formatting for the status bars ──────────────────────────────────
 export const kfmt = (n) => { n = +n || 0; return n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n); };
-export const clock = (s) => { s = Math.max(0, Math.round(s)); const m = Math.floor(s / 60); return m ? `${m}m${String(s % 60).padStart(2, "0")}s` : `${s}s`; };
+export const clock = (s) => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = String(s % 60).padStart(2, "0"); return h ? `${h}h ${m}m ${sec}s` : m ? `${m}m ${sec}s` : `${s}s`; };
 
 // ── minimal markdown → HTML (escaped first; only http(s) links) ─────────────────
 function mdEsc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
@@ -213,14 +213,24 @@ export function createAskPanel(opts = {}) {
 
   // live status banner driven by the run's <<<STATUS>>> frames: a spinner + current
   // activity, plus tool-call / token / turn / elapsed tallies.
-  function statusHTML(s) {
+  function statusParts(s) {
     s = s || {};
     const act = mdEsc((s.activity && String(s.activity).trim()) || (s.tool ? String(s.tool) : "working…"));
     const tools = Number(s.toolCalls || 0), turns = Number(s.turns || 0), tin = Number(s.tokensIn || 0), tout = Number(s.tokensOut || 0);
     const chips = [`<span class="chip">🔧 <b>${tools}</b> tool${tools === 1 ? "" : "s"}</span>`, `<span class="chip">↑${kfmt(tin)} ↓${kfmt(tout)} <b>tok</b></span>`];
     if (turns) chips.push(`<span class="chip">${turns} turn${turns === 1 ? "" : "s"}</span>`);
     if (s.elapsedMs != null) chips.push(`<span class="chip">${mdEsc(clock(s.elapsedMs / 1000))}</span>`);
-    return `<div class="gaws-ask-stat"><div class="row"><span class="spin"></span><span class="act">${act}</span></div><div class="mtr">${chips.join("")}</div></div>`;
+    return { act, chips: chips.join("") };
+  }
+  function statusHTML(s) {
+    const { act, chips } = statusParts(s);
+    return `<div class="gaws-ask-stat"><div class="row"><span class="spin"></span><span class="act">${act}</span></div><div class="mtr">${chips}</div></div>`;
+  }
+  // update text/chips in place; never touch .spin so its CSS animation runs uninterrupted
+  function paintStatus(el, s) {
+    const a = el.querySelector(".gaws-ask-stat .act"), m = el.querySelector(".gaws-ask-stat .mtr");
+    if (!a || !m) { el.innerHTML = statusHTML(s); return; }
+    const p = statusParts(s); a.innerHTML = p.act; m.innerHTML = p.chips;
   }
 
   function open() { syncSubtitle(); if (!msgs.children.length) emptyState(); panel.classList.add("open"); panel.setAttribute("aria-hidden", "false"); setTimeout(() => input.focus(), 230); }
@@ -249,7 +259,7 @@ export function createAskPanel(opts = {}) {
         const rd = res.body.getReader(), dec = new TextDecoder();
         let sbuf = "", result = null;
         const take = (line) => {
-          if (line.startsWith(STATUS)) { try { pending.innerHTML = statusHTML(JSON.parse(line.slice(STATUS.length))); msgs.scrollTop = msgs.scrollHeight; } catch {} }
+          if (line.startsWith(STATUS)) { try { paintStatus(pending, JSON.parse(line.slice(STATUS.length))); msgs.scrollTop = msgs.scrollHeight; } catch {} }
           else if (line.startsWith(ASKRESULT)) { try { result = JSON.parse(line.slice(ASKRESULT.length)); } catch {} }
         };
         for (;;) { const { value, done } = await rd.read(); if (done) break; sbuf += dec.decode(value, { stream: true }); let nl; while ((nl = sbuf.indexOf("\n")) >= 0) { take(sbuf.slice(0, nl)); sbuf = sbuf.slice(nl + 1); } }
