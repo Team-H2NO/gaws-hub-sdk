@@ -159,7 +159,12 @@ export class HubClient {
      * Advertise this instance's display label / current activity to the hub — shown
      * in the launcher sidebar (label replaces the opaque id; activity replaces the
      * docker status). Identity is the instance's BUS_TOKEN, so it can only set its
-     * OWN presence. Pass `""` to clear a field; omit a field to leave it unchanged.
+     * OWN presence. Pass `""` to clear a field; omit a field to leave it unchanged
+     * (so set `label` once, then update `activity` alone on each step).
+     *
+     * Call it at EVERY state transition — load/save/select, each loop iteration and
+     * its phase, answering a query — and `{ activity: "idle" }` when a job ends. A
+     * stale activity reads as "stuck"; frequent updates read as "alive".
      *
      * Best-effort: a no-op without a token (local / untrusted runs) and never throws
      * into the caller — presence must not break the agent's real work.
