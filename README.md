@@ -112,7 +112,9 @@ hub picks a free provider or cold-starts one.
   (job routes run via the job host).
 - `hub` / `HubClient`: `discover`, `invoke`, `submitJob`, `runJob`, `getJob`,
   `streamJob`, `cancelJob`, `jobResult`, `busPublish`, `busPull`, `storeGet`, `storePut`,
-  `presence` (advertise a sidebar label + live activity; best-effort, no-op without a token).
+  `presence` (advertise a sidebar label + live activity; best-effort, no-op without a token —
+  **call it at every state transition**: set `label` once, then update `activity` alone each
+  step, `""` to clear, `"idle"` when a job ends; omit a field to leave it unchanged).
 - `runClaude`, `claudeArgv`, `claudeEventToLogs`, `cleanModel`, `cleanEffort`,
   `summarize`, `MODELS`, `EFFORTS`; `feed`, `served`; `log`, `runLoop`.
 - `z`, `toJsonSchema` (zod 4 → JSON Schema for manifest descriptors).
