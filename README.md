@@ -77,9 +77,12 @@ hub picks a free provider or cold-starts one.
   feed, served at `GET /api/served` (SSE). So a cold-started provider's own page shows
   what it's running. `feed` / `served(name, handler)` are exported for manual use.
 - **workbench UI kit** — served at `/_gaws/agent-ui.{js,css}`. Import it from your page
-  (`import { createRunBars, openSSE, jobDedup, persistFields, markdown } from
-  "./_gaws/agent-ui.js"`) for per-run status bars + a detail modal, minimal markdown,
-  cross-stream job dedup, and Setup persistence — no build step.
+  (`import { createRunBars, createAskPanel, openSSE, jobDedup, persistFields, markdown } from
+  "./_gaws/agent-ui.js"`) for per-run status bars + a detail modal, an "Ask" slide-in chat
+  panel, minimal markdown, cross-stream job dedup, and Setup persistence — no build step.
+  `createAskPanel({ subtitle, body })` builds a right-edge Q&A drawer that streams a
+  resumable claude turn; its endpoint streams `<<<STATUS>>>` frames + a final
+  `<<<ASKRESULT>>>` line (see the function header for the contract).
 
 ## Surface
 

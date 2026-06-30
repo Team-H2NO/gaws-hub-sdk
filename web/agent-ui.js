@@ -3,7 +3,7 @@
 // shares the agent's origin under /a/<id>/) and supplies only its own layout +
 // service cards + button glue:
 //
-//   import { createRunBars, openSSE, jobDedup, persistFields, markdown }
+//   import { createRunBars, createAskPanel, openSSE, jobDedup, persistFields, markdown }
 //     from "./_gaws/agent-ui.js";
 //
 // Pairs with /_gaws/agent-ui.css for the status-bar/modal/markdown styles.
@@ -157,4 +157,114 @@ export function createRunBars(opts = {}) {
     has(jobId) { return bars.has(jobId); },
     clear() { bars.clear(); statusbars.innerHTML = ""; closeModal(); },
   };
+}
+
+// ── "Ask" slide-in chat panel: a right-edge drawer for a resumable claude -p Q&A ──
+// The drawer + open/close/width/new-chat + the streaming render all live here; the
+// consumer supplies only a trigger button and an endpoint. The endpoint must stream the
+// run's `<<<STATUS>>>{...}` frames (one JSON object per line → the live banner) and end
+// with one `<<<ASKRESULT>>>{answer|error, sessionId}` line. The server owns the session:
+// the first turn mints the id, later turns echo it back so it --resumes the same chat.
+// opts:
+//   endpoint   POST url for one turn (default "api/ask/stream", resolved against the page)
+//   title      header title (default "Ask") · subtitle() header right-hand label, re-read
+//              on open / syncSubtitle() (e.g. the loaded repo)
+//   body(q,id) request body for a turn (default {question, sessionId:id})
+//   emptyHTML  empty-state hint · placeholder  textarea placeholder
+//   base(p)    url resolver (default: relative to location.href, proxy-safe under /a/<id>/)
+//   widthKey   localStorage key for the persisted width (default "gaws-ask-width")
+//   id         optional element id for the <aside> (handy for tests)
+// Returns { open, close, newChat, syncSubtitle, el }.
+export function createAskPanel(opts = {}) {
+  const STATUS = "<<<STATUS>>>", ASKRESULT = "<<<ASKRESULT>>>";
+  const WIDTHS = { full: "100vw", "2/3": "66.6667vw", half: "50vw", "1/3": "33.3333vw" };
+  const base = opts.base || ((p) => { const h = location.href.endsWith("/") ? location.href : location.href + "/"; return new URL(p, h).toString(); });
+  const endpoint = opts.endpoint || "api/ask/stream";
+  const subtitle = opts.subtitle || (() => "");
+  const buildBody = opts.body || ((question, sessionId) => ({ question, sessionId }));
+  const emptyHTML = opts.emptyHTML || "Ask anything. The conversation continues until you press “New Chat”.";
+  const widthKey = opts.widthKey || "gaws-ask-width";
+
+  const panel = document.createElement("aside");
+  panel.className = "gaws-ask"; if (opts.id) panel.id = opts.id;
+  panel.setAttribute("aria-hidden", "true"); panel.setAttribute("aria-label", opts.title || "Ask");
+  panel.innerHTML = `<div class="gaws-ask-head">`
+    + `<span class="gaws-ask-title">${mdEsc(opts.title || "Ask")} · <span class="gaws-ask-sub"></span></span>`
+    + `<button type="button" class="gaws-ask-new" title="start a fresh conversation (new session)">＋ New Chat</button>`
+    + `<select class="gaws-ask-width" title="panel width"><option value="1/3">⅓ width</option><option value="half">½ width</option><option value="2/3">⅔ width</option><option value="full">Full width</option></select>`
+    + `<button type="button" class="gaws-ask-x" title="close">✕</button></div>`
+    + `<div class="gaws-ask-msgs"></div>`
+    + `<form class="gaws-ask-form"><textarea rows="2" autocomplete="off"></textarea><button type="submit" class="gaws-ask-send">Send</button></form>`;
+  document.body.appendChild(panel);
+
+  const sub = panel.querySelector(".gaws-ask-sub"), msgs = panel.querySelector(".gaws-ask-msgs");
+  const form = panel.querySelector(".gaws-ask-form"), input = panel.querySelector("textarea");
+  const send = panel.querySelector(".gaws-ask-send"), widthSel = panel.querySelector(".gaws-ask-width");
+  input.placeholder = opts.placeholder || "Ask anything… (Enter to send)";
+  let sessionId = null, busy = false;
+
+  const applyWidth = (key) => { if (!WIDTHS[key]) key = "1/3"; widthSel.value = key; panel.style.setProperty("--gaws-ask-w", WIDTHS[key]); };
+  applyWidth(localStorage.getItem(widthKey) || "1/3");
+  widthSel.onchange = () => { applyWidth(widthSel.value); try { localStorage.setItem(widthKey, widthSel.value); } catch {} };
+
+  const syncSubtitle = () => { sub.textContent = subtitle() || ""; };
+  const emptyState = () => { msgs.innerHTML = `<div class="gaws-ask-empty">${emptyHTML}</div>`; };
+  const bubble = (cls, isHTML, content) => { const d = document.createElement("div"); d.className = "gaws-ask-msg " + cls; if (isHTML) d.innerHTML = content; else d.textContent = content; msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight; return d; };
+
+  // live status banner driven by the run's <<<STATUS>>> frames: a spinner + current
+  // activity, plus tool-call / token / turn / elapsed tallies.
+  function statusHTML(s) {
+    s = s || {};
+    const act = mdEsc((s.activity && String(s.activity).trim()) || (s.tool ? String(s.tool) : "working…"));
+    const tools = Number(s.toolCalls || 0), turns = Number(s.turns || 0), tin = Number(s.tokensIn || 0), tout = Number(s.tokensOut || 0);
+    const chips = [`<span class="chip">🔧 <b>${tools}</b> tool${tools === 1 ? "" : "s"}</span>`, `<span class="chip">↑${kfmt(tin)} ↓${kfmt(tout)} <b>tok</b></span>`];
+    if (turns) chips.push(`<span class="chip">${turns} turn${turns === 1 ? "" : "s"}</span>`);
+    if (s.elapsedMs != null) chips.push(`<span class="chip">${mdEsc(clock(s.elapsedMs / 1000))}</span>`);
+    return `<div class="gaws-ask-stat"><div class="row"><span class="spin"></span><span class="act">${act}</span></div><div class="mtr">${chips.join("")}</div></div>`;
+  }
+
+  function open() { syncSubtitle(); if (!msgs.children.length) emptyState(); panel.classList.add("open"); panel.setAttribute("aria-hidden", "false"); setTimeout(() => input.focus(), 230); }
+  function close() { panel.classList.remove("open"); panel.setAttribute("aria-hidden", "true"); }
+  function newChat() { sessionId = null; emptyState(); syncSubtitle(); input.value = ""; input.focus(); }
+
+  panel.querySelector(".gaws-ask-new").onclick = newChat;
+  panel.querySelector(".gaws-ask-x").onclick = close;
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && panel.classList.contains("open")) close(); });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } });
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    const q = input.value.trim(); if (!q) return;
+    if (msgs.querySelector(".gaws-ask-empty")) msgs.innerHTML = "";       // drop the hint on first message
+    bubble("user", false, q);
+    input.value = ""; busy = true; send.disabled = true;
+    const pending = bubble("bot pending working", true, statusHTML({ activity: "starting Claude…" }));
+    const fail = (m) => { pending.className = "gaws-ask-msg bot err"; pending.textContent = "⚠ " + m; };
+    let answered = false;
+    try {
+      const res = await fetch(base(endpoint), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(buildBody(q, sessionId)) });
+      if (!res.ok || !res.body) { const txt = await res.text().catch(() => ""); fail(txt || ("request failed (" + res.status + ")")); }
+      else {
+        const rd = res.body.getReader(), dec = new TextDecoder();
+        let sbuf = "", result = null;
+        const take = (line) => {
+          if (line.startsWith(STATUS)) { try { pending.innerHTML = statusHTML(JSON.parse(line.slice(STATUS.length))); msgs.scrollTop = msgs.scrollHeight; } catch {} }
+          else if (line.startsWith(ASKRESULT)) { try { result = JSON.parse(line.slice(ASKRESULT.length)); } catch {} }
+        };
+        for (;;) { const { value, done } = await rd.read(); if (done) break; sbuf += dec.decode(value, { stream: true }); let nl; while ((nl = sbuf.indexOf("\n")) >= 0) { take(sbuf.slice(0, nl)); sbuf = sbuf.slice(nl + 1); } }
+        if (sbuf) take(sbuf);                                              // flush a final unterminated line
+        if (result && result.answer) { sessionId = result.sessionId || sessionId; pending.className = "gaws-ask-msg bot"; pending.innerHTML = markdown(result.answer); answered = true; }
+        else fail((result && result.error) || "no answer was produced");
+      }
+    } catch (err) { fail(err.message || String(err)); }
+    finally {
+      busy = false; send.disabled = false; input.focus();
+      // align the answer's top to the top of the scroll area so a long reply reads from
+      // its start (no manual scroll-up); while waiting/erroring, keep the latest line in view.
+      if (answered) pending.scrollIntoView({ block: "start" }); else msgs.scrollTop = msgs.scrollHeight;
+    }
+  };
+
+  return { open, close, newChat, syncSubtitle, el: panel };
 }

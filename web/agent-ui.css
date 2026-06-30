@@ -33,3 +33,34 @@
 .md ul, .md ol { margin: .4rem 0 .4rem 1.2rem; } .md li { margin: .15rem 0; }
 .md table { border-collapse: collapse; margin: .5rem 0; font-size: .92em; }
 .md th, .md td { border: 1px solid var(--bd, #1e2330); padding: .3rem .6rem; text-align: left; } .md th { background: #0d1119; }
+
+/* "Ask" slide-in chat panel (createAskPanel) — right-edge drawer; width via --gaws-ask-w */
+.gaws-ask { position: fixed; top: 0; right: 0; height: 100vh; width: var(--gaws-ask-w, min(440px, 94vw)); max-width: 100vw; background: var(--pan, #0d111a); border-left: 1px solid #2a3145; box-shadow: -18px 0 50px rgba(0,0,0,.5); z-index: 55; display: flex; flex-direction: column; transform: translateX(100%); transition: transform .22s ease, width .2s ease, visibility 0s linear .22s; visibility: hidden; }
+.gaws-ask.open { transform: translateX(0); visibility: visible; transition: transform .22s ease, width .2s ease; }
+.gaws-ask-head { display: flex; align-items: center; gap: .5rem; padding: .7rem .9rem; border-bottom: 1px solid var(--bd, #1e2330); background: #11151f; }
+.gaws-ask-title { font-weight: 700; font-size: .85rem; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg, #cdd6f4); }
+.gaws-ask-title .gaws-ask-sub { color: var(--acc, #7aa2f7); font-weight: 600; }
+.gaws-ask-head button { padding: .25rem .5rem; cursor: pointer; background: #1a2030; color: var(--fg, #cdd6f4); border: 1px solid var(--bd, #1e2330); border-radius: .45rem; font: inherit; font-size: .78rem; }
+.gaws-ask-width { flex: 0 0 auto; background: #1e2330; color: var(--fg, #cdd6f4); border: 0; border-radius: .45rem; padding: .25rem .4rem; font-size: .78rem; cursor: pointer; }
+.gaws-ask-msgs { flex: 1 1 auto; overflow: auto; padding: .9rem; display: flex; flex-direction: column; gap: .7rem; }
+.gaws-ask-empty { color: var(--mut, #6b7394); font-size: .85rem; margin: auto; text-align: center; padding: 1rem; }
+.gaws-ask-msg { max-width: 92%; padding: .55rem .75rem; border-radius: .6rem; font-size: .86rem; line-height: 1.5; white-space: normal; word-wrap: break-word; }
+.gaws-ask-msg.user { align-self: flex-end; background: #1d3a66; color: #dbe6ff; border-bottom-right-radius: .15rem; }
+.gaws-ask-msg.bot { align-self: flex-start; background: #151b28; border: 1px solid #232a3b; color: var(--fg, #cdd6f4); border-bottom-left-radius: .15rem; }
+.gaws-ask-msg.bot.err { border-color: #5a2330; color: #f3b3bf; }
+.gaws-ask-msg.bot.pending { color: var(--mut, #6b7394); font-style: italic; }
+.gaws-ask-msg.bot.working { font-style: normal; background: #101728; border-color: #26324a; color: #c8d3ee; padding: .5rem .65rem; }
+.gaws-ask-stat { display: flex; flex-direction: column; gap: .3rem; }
+.gaws-ask-stat .row { display: flex; align-items: center; gap: .45rem; min-width: 0; }
+.gaws-ask-stat .spin { flex: 0 0 auto; width: .7rem; height: .7rem; border-radius: 50%; border: 2px solid #2c3651; border-top-color: var(--acc, #7aa2f7); animation: gaws-ask-spin .7s linear infinite; }
+@keyframes gaws-ask-spin { to { transform: rotate(360deg); } }
+.gaws-ask-stat .act { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .82rem; color: #aeb9d8; }
+.gaws-ask-stat .mtr { display: flex; flex-wrap: wrap; gap: .35rem; font-size: .74rem; color: #8a94b4; }
+.gaws-ask-stat .mtr b { font-weight: 700; color: var(--fg, #cdd6f4); }
+.gaws-ask-stat .chip { background: #0b0e14; border: 1px solid #232a3b; border-radius: .3rem; padding: .05rem .35rem; white-space: nowrap; }
+.gaws-ask-msg.bot p { margin: .25rem 0; } .gaws-ask-msg.bot p:first-child { margin-top: 0; } .gaws-ask-msg.bot p:last-child { margin-bottom: 0; }
+.gaws-ask-msg.bot pre.md-code { background: #0b0e14; border: 1px solid #232a3b; border-radius: .4rem; padding: .5rem .6rem; overflow: auto; font: .78rem/1.45 ui-monospace, Menlo, monospace; }
+.gaws-ask-msg.bot code { background: #0b0e14; border-radius: .25rem; padding: 0 .25rem; font: .8em ui-monospace, Menlo, monospace; }
+.gaws-ask-form { display: flex; gap: .5rem; padding: .7rem .9rem; border-top: 1px solid var(--bd, #1e2330); background: #11151f; }
+.gaws-ask-form textarea { flex: 1 1 auto; resize: none; background: #0b0e14; color: var(--fg, #cdd6f4); border: 1px solid #2a3145; border-radius: .5rem; padding: .5rem .6rem; font: .86rem/1.4 system-ui, sans-serif; }
+.gaws-ask-send { flex: 0 0 auto; padding: .4rem .8rem; cursor: pointer; background: var(--acc, #7aa2f7); color: #0b0e14; border: 0; border-radius: .5rem; font: inherit; font-weight: 600; }
