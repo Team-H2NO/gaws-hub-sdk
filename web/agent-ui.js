@@ -13,7 +13,7 @@ export const kfmt = (n) => { n = +n || 0; return n >= 1000 ? (n / 1000).toFixed(
 export const clock = (s) => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = String(s % 60).padStart(2, "0"); return h ? `${h}h ${m}m ${sec}s` : m ? `${m}m ${sec}s` : `${s}s`; };
 
 // ── minimal markdown → HTML (escaped first; only http(s) links) ─────────────────
-function mdEsc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function mdEsc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
 function mdInline(s) {
   s = s.replace(/`([^`]+)`/g, (m, c) => `<code>${c}</code>`);
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
