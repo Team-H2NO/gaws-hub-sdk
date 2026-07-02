@@ -10,6 +10,10 @@ export interface RunJobOptions {
   idempotencyKey?: string;
   onProgress?: (event: JobEvent) => void;
   signal?: AbortSignal;
+  /** Correlation id joining this job into a coordination's trace (05 S6 / 13 §4). */
+  correlationId?: string;
+  /** Parent job / coordinator Plan id, for the coordination job-set query (05 S6). */
+  parentId?: string;
 }
 
 export class HubClient {
@@ -50,10 +54,16 @@ export class HubClient {
   // --- jobs -----------------------------------------------------------
 
   /** Submit a job; returns immediately with the Job (state queued/starting/running). */
-  async submitJob(name: string, inputs: unknown = {}, opts: { version?: number; idempotencyKey?: string } = {}): Promise<Job> {
+  async submitJob(
+    name: string,
+    inputs: unknown = {},
+    opts: { version?: number; idempotencyKey?: string; correlationId?: string; parentId?: string } = {},
+  ): Promise<Job> {
     const q = opts.version ? `?version=${opts.version}` : "";
     const headers: Record<string, string> = { "content-type": "application/json", ...this.auth() };
     if (opts.idempotencyKey) headers["idempotency-key"] = opts.idempotencyKey;
+    if (opts.correlationId) headers["x-gaws-correlation"] = opts.correlationId;
+    if (opts.parentId) headers["x-gaws-parent"] = opts.parentId;
     const r = await fetch(`${this.hubUrl}/api/v1/services/${encodeURIComponent(name)}/jobs${q}`, {
       method: "POST",
       headers,
@@ -111,7 +121,10 @@ export class HubClient {
 
   /** Submit a job and await its terminal result, streaming progress to `onProgress`. */
   async runJob<T = unknown>(name: string, inputs: unknown = {}, opts: RunJobOptions = {}): Promise<Job> {
-    const job = await this.submitJob(name, inputs, { version: opts.version, idempotencyKey: opts.idempotencyKey });
+    const job = await this.submitJob(name, inputs, {
+      version: opts.version, idempotencyKey: opts.idempotencyKey,
+      correlationId: opts.correlationId, parentId: opts.parentId,
+    });
     if (job.done) return job;
     try {
       for await (const ev of this.streamJob(job.id, { signal: opts.signal })) {

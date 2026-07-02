@@ -45,6 +45,10 @@ export class HubClient {
         const headers = { "content-type": "application/json", ...this.auth() };
         if (opts.idempotencyKey)
             headers["idempotency-key"] = opts.idempotencyKey;
+        if (opts.correlationId)
+            headers["x-gaws-correlation"] = opts.correlationId;
+        if (opts.parentId)
+            headers["x-gaws-parent"] = opts.parentId;
         const r = await fetch(`${this.hubUrl}/api/v1/services/${encodeURIComponent(name)}/jobs${q}`, {
             method: "POST",
             headers,
@@ -105,7 +109,10 @@ export class HubClient {
     }
     /** Submit a job and await its terminal result, streaming progress to `onProgress`. */
     async runJob(name, inputs = {}, opts = {}) {
-        const job = await this.submitJob(name, inputs, { version: opts.version, idempotencyKey: opts.idempotencyKey });
+        const job = await this.submitJob(name, inputs, {
+            version: opts.version, idempotencyKey: opts.idempotencyKey,
+            correlationId: opts.correlationId, parentId: opts.parentId,
+        });
         if (job.done)
             return job;
         try {

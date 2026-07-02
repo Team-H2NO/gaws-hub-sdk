@@ -4,6 +4,10 @@ export interface RunJobOptions {
     idempotencyKey?: string;
     onProgress?: (event: JobEvent) => void;
     signal?: AbortSignal;
+    /** Correlation id joining this job into a coordination's trace (05 S6 / 13 §4). */
+    correlationId?: string;
+    /** Parent job / coordinator Plan id, for the coordination job-set query (05 S6). */
+    parentId?: string;
 }
 export declare class HubClient {
     private hubUrl;
@@ -22,6 +26,8 @@ export declare class HubClient {
     submitJob(name: string, inputs?: unknown, opts?: {
         version?: number;
         idempotencyKey?: string;
+        correlationId?: string;
+        parentId?: string;
     }): Promise<Job>;
     getJob(id: string, opts?: {
         wait?: string;
