@@ -101,7 +101,7 @@ export function runClaude(input, emit = {}, opts = {}) {
                 s.text = summary.text; // final message for the modal (markdown)
             return opts.status ? { ...s, ...opts.status(summary) } : s;
         };
-        let slog = emit.jobId ? log.child({ job: emit.jobId }) : log;
+        let slog = emit.jobId || emit.corr ? log.child({ job: emit.jobId, corr: emit.corr }) : log;
         const child = execFile(bin, argv, { env: opts.env ?? process.env, cwd: opts.cwd, maxBuffer: 64 << 20 });
         const onAbort = () => child.kill("SIGTERM");
         emit.signal?.addEventListener("abort", onAbort, { once: true });
@@ -125,7 +125,7 @@ export function runClaude(input, emit = {}, opts = {}) {
                 if (ev.type === "system" && ev.subtype === "init") {
                     summary.session = ev.session_id || summary.session;
                     summary.activity = "working";
-                    slog = emit.jobId ? log.child({ job: emit.jobId, session: summary.session ?? undefined }) : log.child({ session: summary.session ?? undefined });
+                    slog = log.child({ job: emit.jobId, corr: emit.corr, session: summary.session ?? undefined });
                 }
                 if (ev.type === "assistant") {
                     summary.turns++;

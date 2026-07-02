@@ -160,7 +160,7 @@ export function runClaude(input: ClaudeInput, emit: ClaudeEmit = {}, opts: RunCl
       if (summary.state !== "running") s.text = summary.text; // final message for the modal (markdown)
       return opts.status ? { ...s, ...opts.status(summary) } : s;
     };
-    let slog = emit.jobId ? log.child({ job: emit.jobId }) : log;
+    let slog = emit.jobId || emit.corr ? log.child({ job: emit.jobId, corr: emit.corr }) : log;
     const child: ChildProcess = execFile(bin, argv, { env: opts.env ?? process.env, cwd: opts.cwd, maxBuffer: 64 << 20 });
     const onAbort = () => child.kill("SIGTERM");
     emit.signal?.addEventListener("abort", onAbort, { once: true });
@@ -174,7 +174,7 @@ export function runClaude(input: ClaudeInput, emit: ClaudeEmit = {}, opts: RunCl
         const line = buf.slice(0, i); buf = buf.slice(i + 1);
         if (!line.trim()) continue;
         let ev: any; try { ev = JSON.parse(line); } catch { continue; }
-        if (ev.type === "system" && ev.subtype === "init") { summary.session = ev.session_id || summary.session; summary.activity = "working"; slog = emit.jobId ? log.child({ job: emit.jobId, session: summary.session ?? undefined }) : log.child({ session: summary.session ?? undefined }); }
+        if (ev.type === "system" && ev.subtype === "init") { summary.session = ev.session_id || summary.session; summary.activity = "working"; slog = log.child({ job: emit.jobId, corr: emit.corr, session: summary.session ?? undefined }); }
         if (ev.type === "assistant") {
           summary.turns++;
           for (const b of ev.message?.content || []) {
