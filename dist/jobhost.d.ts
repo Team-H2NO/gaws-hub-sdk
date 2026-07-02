@@ -1,6 +1,8 @@
 /** Context handed to a job handler. */
 export interface JobContext {
     jobId: string;
+    /** Correlation id of the submitting chain — echo on downstream hub calls. */
+    corr?: string;
     /** Aborts when the hub reports the job cancelled. */
     signal: AbortSignal;
     /** Emit a progress event (also a heartbeat). `data` shows up in metadata.progress. */
@@ -17,4 +19,4 @@ export type JobHandler = (input: unknown, ctx: JobContext) => Promise<unknown> |
  * so a cold-started provider shows what it's serving even before its own UI loads
  * (agents-interface §7/§14). Best-effort: a no-op without a BUS_TOKEN.
  */
-export declare function startJob(jobId: string, input: unknown, handler: JobHandler, service?: string): Promise<void>;
+export declare function startJob(jobId: string, input: unknown, handler: JobHandler, service?: string, corr?: string): Promise<void>;

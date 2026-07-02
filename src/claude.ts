@@ -10,6 +10,7 @@
 // that compose their own loop (per-step models, `--max-turns`, the codex binary…).
 
 import { execFile, type ChildProcess } from "node:child_process";
+import { env } from "./env.js";
 import { log, type Level } from "./log.js";
 
 // model/effort accepted by `claude -p` (mirror agent-builder's sets).
@@ -83,6 +84,8 @@ export interface ClaudeInput {
 /** Sink for runClaude's output — a JobContext satisfies it; all fields optional. */
 export interface ClaudeEmit {
   jobId?: string;
+  /** Correlation id of the chain (JobContext supplies it); spend attribution. */
+  corr?: string;
   signal?: AbortSignal;
   progress?: (data: unknown, message?: string) => unknown;
   log?: (line: string) => unknown;
@@ -118,6 +121,24 @@ export interface RunClaudeOptions {
   maxTask?: number;
   /** Extend the status snapshot with extra fields (e.g. builder's phase/step). */
   status?: (summary: ClaudeSummary) => Record<string, unknown>;
+}
+
+// Ledger every run's spend (evolution 13 §5.2, D12): in-job → a `usage` block
+// on the job report channel; out-of-job (Ask turns, observe loops) → POST
+// /api/v1/spend. Fire-and-forget: spending is already done, reporting must
+// never fail a run. No agent author writes ledger code.
+function postUsage(s: ClaudeSummary, jobId?: string, corr?: string): void {
+  if (s.costUsd == null && !s.tokensIn && !s.tokensOut) return; // nothing to ledger
+  const usage = { costUsd: s.costUsd ?? 0, tokensIn: s.tokensIn, tokensOut: s.tokensOut,
+    model: s.model || undefined, session: s.session ?? undefined };
+  const [url, body] = jobId
+    ? [`${env.hubUrl}/api/v1/jobs/${jobId}/report`, { kind: "progress", message: "claude usage", usage }]
+    : [`${env.hubUrl}/api/v1/spend`, { ...usage, corr }];
+  void fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${env.busToken}` },
+    body: JSON.stringify(body),
+  }).catch(() => {});
 }
 
 // spawn `claude -p`, parse its stream-json into job progress + §15 structured logs,
@@ -177,6 +198,7 @@ export function runClaude(input: ClaudeInput, emit: ClaudeEmit = {}, opts: RunCl
     child.on("error", (e) => { emit.signal?.removeEventListener("abort", onAbort); resolve({ ...summary, error: `spawn failed: ${e.message} (is the claude CLI installed + credentials mounted?)`, isError: true }); });
     child.on("close", (code) => {
       emit.signal?.removeEventListener("abort", onAbort);
+      postUsage(summary, emit.jobId, emit.corr); // spend already happened — ledger it even on error/cancel
       if (emit.signal?.aborted) return reject(new Error("cancelled")); // → job host reports the job cancelled
       // exited non-zero before producing a result → surface it (don't report a clean success).
       if (code && !summary.isError) { summary.isError = true; summary.error = `claude exited ${code} (credentials mounted? egress allowed?)`; }

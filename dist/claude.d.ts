@@ -20,6 +20,8 @@ export interface ClaudeInput {
 /** Sink for runClaude's output — a JobContext satisfies it; all fields optional. */
 export interface ClaudeEmit {
     jobId?: string;
+    /** Correlation id of the chain (JobContext supplies it); spend attribution. */
+    corr?: string;
     signal?: AbortSignal;
     progress?: (data: unknown, message?: string) => unknown;
     log?: (line: string) => unknown;

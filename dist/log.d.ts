@@ -7,6 +7,8 @@ export interface LogContext {
     thread?: string;
     /** The hub job id, when serving a `job` service. */
     job?: string;
+    /** The hub-minted correlation id joining the whole user→job→claude chain. */
+    corr?: string;
 }
 export interface Logger {
     debug(msg: string, fields?: Record<string, unknown>): void;

@@ -9,6 +9,7 @@
 // `claudeEventToLogs`, `cleanModel/Effort`, `summarize`) are exported for agents
 // that compose their own loop (per-step models, `--max-turns`, the codex binary…).
 import { execFile } from "node:child_process";
+import { env } from "./env.js";
 import { log } from "./log.js";
 // model/effort accepted by `claude -p` (mirror agent-builder's sets).
 export const MODELS = new Set(["opus", "sonnet", "haiku", "fable"]);
@@ -62,6 +63,24 @@ export function claudeEventToLogs(ev) {
         default:
             return [];
     }
+}
+// Ledger every run's spend (evolution 13 §5.2, D12): in-job → a `usage` block
+// on the job report channel; out-of-job (Ask turns, observe loops) → POST
+// /api/v1/spend. Fire-and-forget: spending is already done, reporting must
+// never fail a run. No agent author writes ledger code.
+function postUsage(s, jobId, corr) {
+    if (s.costUsd == null && !s.tokensIn && !s.tokensOut)
+        return; // nothing to ledger
+    const usage = { costUsd: s.costUsd ?? 0, tokensIn: s.tokensIn, tokensOut: s.tokensOut,
+        model: s.model || undefined, session: s.session ?? undefined };
+    const [url, body] = jobId
+        ? [`${env.hubUrl}/api/v1/jobs/${jobId}/report`, { kind: "progress", message: "claude usage", usage }]
+        : [`${env.hubUrl}/api/v1/spend`, { ...usage, corr }];
+    void fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${env.busToken}` },
+        body: JSON.stringify(body),
+    }).catch(() => { });
 }
 // spawn `claude -p`, parse its stream-json into job progress + §15 structured logs,
 // resolving with the final summary. Never rejects except on cancellation.
@@ -151,6 +170,7 @@ export function runClaude(input, emit = {}, opts = {}) {
         child.on("error", (e) => { emit.signal?.removeEventListener("abort", onAbort); resolve({ ...summary, error: `spawn failed: ${e.message} (is the claude CLI installed + credentials mounted?)`, isError: true }); });
         child.on("close", (code) => {
             emit.signal?.removeEventListener("abort", onAbort);
+            postUsage(summary, emit.jobId, emit.corr); // spend already happened — ledger it even on error/cancel
             if (emit.signal?.aborted)
                 return reject(new Error("cancelled")); // → job host reports the job cancelled
             // exited non-zero before producing a result → surface it (don't report a clean success).

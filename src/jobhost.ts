@@ -20,6 +20,8 @@ let inFlight = 0;
 /** Context handed to a job handler. */
 export interface JobContext {
   jobId: string;
+  /** Correlation id of the submitting chain — echo on downstream hub calls. */
+  corr?: string;
   /** Aborts when the hub reports the job cancelled. */
   signal: AbortSignal;
   /** Emit a progress event (also a heartbeat). `data` shows up in metadata.progress. */
@@ -52,14 +54,16 @@ async function report(jobId: string, body: unknown, ac: AbortController): Promis
  * so a cold-started provider shows what it's serving even before its own UI loads
  * (agents-interface §7/§14). Best-effort: a no-op without a BUS_TOKEN.
  */
-export async function startJob(jobId: string, input: unknown, handler: JobHandler, service?: string): Promise<void> {
+export async function startJob(jobId: string, input: unknown, handler: JobHandler, service?: string, corr?: string): Promise<void> {
   const ac = new AbortController();
   // Job-scoped logger: every ctx.log/ctx.progress also lands in Loki under this
-  // job id (agents-interface §15), in addition to the hub job-event report.
-  const jlog = log.child({ job: jobId });
+  // job id — and under the chain's correlation id (evolution 13 §4), so one
+  // Grafana corr= filter returns the whole user→job→claude trace.
+  const jlog = log.child({ job: jobId, corr });
   const act = service ?? "service";
   const ctx: JobContext = {
     jobId,
+    corr,
     signal: ac.signal,
     progress: (data, message) => {
       jlog.event("job.progress", message ?? "progress", { data });

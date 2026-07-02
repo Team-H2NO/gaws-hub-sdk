@@ -36,14 +36,16 @@ async function report(jobId, body, ac) {
  * so a cold-started provider shows what it's serving even before its own UI loads
  * (agents-interface §7/§14). Best-effort: a no-op without a BUS_TOKEN.
  */
-export async function startJob(jobId, input, handler, service) {
+export async function startJob(jobId, input, handler, service, corr) {
     const ac = new AbortController();
     // Job-scoped logger: every ctx.log/ctx.progress also lands in Loki under this
-    // job id (agents-interface §15), in addition to the hub job-event report.
-    const jlog = log.child({ job: jobId });
+    // job id — and under the chain's correlation id (evolution 13 §4), so one
+    // Grafana corr= filter returns the whole user→job→claude trace.
+    const jlog = log.child({ job: jobId, corr });
     const act = service ?? "service";
     const ctx = {
         jobId,
+        corr,
         signal: ac.signal,
         progress: (data, message) => {
             jlog.event("job.progress", message ?? "progress", { data });
