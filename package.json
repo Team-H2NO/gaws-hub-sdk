@@ -1,6 +1,6 @@
 {
   "name": "@gaws-hub/sdk",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "SDK for building and calling gaws-hub agents: the service contract (sync + job services), hub-brokered bus/store, a Hono agent server with a built-in job host, a claude -p runner, a provider-side activity feed, and a reusable workbench UI kit.",
   "type": "module",
   "main": "./dist/index.js",
