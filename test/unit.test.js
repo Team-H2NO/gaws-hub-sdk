@@ -170,6 +170,32 @@ test("runJob: returns only a TERMINAL job — long-polls past a dropped stream, 
   } finally { globalThis.fetch = realFetch; }
 });
 
+test("consumeGroup: pulls a batch, yields each, then acks `next` (at-least-once, evolution 10)", async () => {
+  const realFetch = globalThis.fetch;
+  const client = new HubClient("http://hub:3000", "http://hub:3000/bus", "", "tok");
+  const acks = [];
+  let pulls = 0;
+  try {
+    globalThis.fetch = async (url, opts) => {
+      if (url.includes("/cursors/")) { acks.push(JSON.parse(opts.body).ack); return { ok: true, status: 204 }; }
+      // first pull → 3 msgs (seq 4..6, cursor next=6); after that → empty
+      pulls++;
+      const messages = pulls === 1
+        ? [4, 5, 6].map((seq) => ({ v: 2, topic: "sys.jobs.lifecycle", seq, ts: 0, publisher: "hub", kind: "job.succeeded", ref: { n: seq } }))
+        : [];
+      return { ok: true, status: 200, json: async () => ({ messages, next: messages.length ? 6 : 6 }) };
+    };
+    const ac = new AbortController();
+    const seen = [];
+    for await (const env of client.consumeGroup("sys.jobs.lifecycle", "coordinator", { idleMs: 5, signal: ac.signal })) {
+      seen.push(env.seq);
+      if (seen.length === 3) setTimeout(() => ac.abort(), 10); // stop after the first batch drains
+    }
+    assert.deepEqual(seen, [4, 5, 6]);           // yielded each envelope in order
+    assert.deepEqual(acks, [6]);                 // acked the batch's `next` ONCE, after processing
+  } finally { globalThis.fetch = realFetch; }
+});
+
 test("renderPrompt: loads prompts/<name>.md and substitutes {{vars}} (missing → '')", () => {
   const dir = mkdtempSync(join(tmpdir(), "gaws-prompt-"));
   mkdirSync(join(dir, "prompts"));

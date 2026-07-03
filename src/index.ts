@@ -34,4 +34,4 @@ export type { ClaudeInput, ClaudeEmit, ClaudeSummary, RunClaudeOptions, ClaudeLo
 export { feed, served } from "./feed.js";
 export type { FeedEntry } from "./feed.js";
 export { z, toJsonSchema } from "./schema.js";
-export type { Job, JobEvent, JobState, JobResult, ServiceInfo, ProviderInfo } from "./types.js";
+export type { Job, JobEvent, JobState, JobResult, ServiceInfo, ProviderInfo, BusEnvelope } from "./types.js";

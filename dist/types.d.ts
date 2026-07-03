@@ -30,6 +30,16 @@ export interface JobEvent {
     message?: string;
     data?: unknown;
 }
+/** A durable bus message (evolution 10 §4.1). `ref` is a key/reference, not a blob. */
+export interface BusEnvelope {
+    v: number;
+    topic: string;
+    seq: number;
+    ts: number;
+    publisher: string;
+    kind: string;
+    ref: unknown;
+}
 export interface ProviderInfo {
     type: string;
     instances: {

@@ -1,4 +1,4 @@
-import type { Job, JobEvent, ServiceInfo } from "./types.js";
+import type { Job, JobEvent, ServiceInfo, BusEnvelope } from "./types.js";
 export interface RunJobOptions {
     version?: number;
     idempotencyKey?: string;
@@ -64,6 +64,37 @@ export declare class HubClient {
     }>;
     busPublish(topic: string, msg: unknown): Promise<boolean>;
     busPull<T = unknown>(topic: string): Promise<T[]>;
+    /** Publish a versioned envelope `{kind, ref}`; returns the hub-assigned seq. */
+    publishEvent(topic: string, kind: string, ref: unknown): Promise<number>;
+    /** One durable-group pull: envelopes since the group's cursor + the seq to ack to.
+     *  The group id must equal this instance's TYPE (10 §6); the cursor survives restart. */
+    pullGroup(topic: string, group: string, opts?: {
+        limit?: number;
+    }): Promise<{
+        messages: BusEnvelope[];
+        next: number;
+    }>;
+    /** Anonymous offset pull (catch-up/debug): envelopes with seq > `from`, beyond the ring. */
+    pullFrom(topic: string, from: number, opts?: {
+        limit?: number;
+    }): Promise<{
+        messages: BusEnvelope[];
+        next: number;
+    }>;
+    /** Advance a durable group's cursor (monotonic; a lower ack is a no-op). */
+    ackGroup(topic: string, group: string, seq: number): Promise<boolean>;
+    /**
+     * Durably consume a topic as a GROUP: pull → yield each envelope → ack the batch,
+     * resuming from the persisted cursor. **At-least-once** — your handler must be
+     * idempotent (the ack lands only after the consumer has processed the whole batch,
+     * so a crash mid-batch redelivers). Loops until `signal` aborts; sleeps `idleMs`
+     * between empty polls. This is the episodic-ingest contract for memory (11).
+     */
+    consumeGroup(topic: string, group: string, opts?: {
+        limit?: number;
+        idleMs?: number;
+        signal?: AbortSignal;
+    }): AsyncGenerator<BusEnvelope>;
     storePut(key: string, value: unknown): Promise<boolean>;
     storeGet(key: string): Promise<string | null>;
     /**

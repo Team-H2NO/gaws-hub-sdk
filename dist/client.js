@@ -186,6 +186,85 @@ export class HubClient {
             return [];
         return (await r.json());
     }
+    // --- durable event backbone (evolution 10) --------------------------------
+    /** Publish a versioned envelope `{kind, ref}`; returns the hub-assigned seq. */
+    async publishEvent(topic, kind, ref) {
+        if (!this.busUrl)
+            return 0;
+        const r = await fetch(`${this.busUrl}/topics/${encodeURIComponent(topic)}`, {
+            method: "POST",
+            headers: { "content-type": "application/json", ...this.auth() },
+            body: JSON.stringify({ kind, ref }),
+        });
+        if (!r.ok)
+            return 0;
+        const j = (await r.json().catch(() => ({})));
+        return j.seq ?? 0;
+    }
+    /** One durable-group pull: envelopes since the group's cursor + the seq to ack to.
+     *  The group id must equal this instance's TYPE (10 §6); the cursor survives restart. */
+    async pullGroup(topic, group, opts = {}) {
+        if (!this.busUrl)
+            return { messages: [], next: 0 };
+        const q = new URLSearchParams({ group });
+        if (opts.limit)
+            q.set("limit", String(opts.limit));
+        const r = await fetch(`${this.busUrl}/topics/${encodeURIComponent(topic)}?${q}`, { headers: this.auth() });
+        if (!r.ok)
+            throw new Error(`pullGroup ${topic} -> HTTP ${r.status}`);
+        return (await r.json());
+    }
+    /** Anonymous offset pull (catch-up/debug): envelopes with seq > `from`, beyond the ring. */
+    async pullFrom(topic, from, opts = {}) {
+        if (!this.busUrl)
+            return { messages: [], next: from };
+        const q = new URLSearchParams({ from: String(from) });
+        if (opts.limit)
+            q.set("limit", String(opts.limit));
+        const r = await fetch(`${this.busUrl}/topics/${encodeURIComponent(topic)}?${q}`, { headers: this.auth() });
+        if (!r.ok)
+            throw new Error(`pullFrom ${topic} -> HTTP ${r.status}`);
+        return (await r.json());
+    }
+    /** Advance a durable group's cursor (monotonic; a lower ack is a no-op). */
+    async ackGroup(topic, group, seq) {
+        if (!this.busUrl)
+            return false;
+        const r = await fetch(`${this.busUrl}/topics/${encodeURIComponent(topic)}/cursors/${encodeURIComponent(group)}`, {
+            method: "POST",
+            headers: { "content-type": "application/json", ...this.auth() },
+            body: JSON.stringify({ ack: seq }),
+        });
+        return r.ok;
+    }
+    /**
+     * Durably consume a topic as a GROUP: pull → yield each envelope → ack the batch,
+     * resuming from the persisted cursor. **At-least-once** — your handler must be
+     * idempotent (the ack lands only after the consumer has processed the whole batch,
+     * so a crash mid-batch redelivers). Loops until `signal` aborts; sleeps `idleMs`
+     * between empty polls. This is the episodic-ingest contract for memory (11).
+     */
+    async *consumeGroup(topic, group, opts = {}) {
+        const idleMs = opts.idleMs ?? 2000;
+        while (!opts.signal?.aborted) {
+            let batch;
+            try {
+                batch = await this.pullGroup(topic, group, { limit: opts.limit });
+            }
+            catch {
+                await sleep(idleMs);
+                continue;
+            }
+            if (batch.messages.length) {
+                for (const env of batch.messages)
+                    yield env;
+                await this.ackGroup(topic, group, batch.next); // ack AFTER the consumer processed the batch
+            }
+            else {
+                await sleep(idleMs);
+            }
+        }
+    }
     async storePut(key, value) {
         if (!this.storeUrl)
             return false;
@@ -235,6 +314,7 @@ export class HubClient {
 export const hub = new HubClient();
 /** The store context handed to every sync/job handler (`ctx.store.putResult`). */
 export const storeCtx = { putResult: (value) => hub.putResult(value) };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function parseMaybeJson(text) {
     if (!text)
         return null;
