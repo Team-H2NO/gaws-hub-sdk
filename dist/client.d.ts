@@ -30,6 +30,7 @@ export declare class HubClient {
     /** Invoke a sync service by name; returns the provider's JSON response. */
     invoke<T = unknown>(name: string, body?: unknown, opts?: {
         version?: number;
+        signal?: AbortSignal;
     }): Promise<T>;
     /** Submit a job; returns immediately with the Job (state queued/starting/running). */
     submitJob(name: string, inputs?: unknown, opts?: {

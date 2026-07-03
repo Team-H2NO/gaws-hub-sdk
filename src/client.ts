@@ -47,12 +47,13 @@ export class HubClient {
   }
 
   /** Invoke a sync service by name; returns the provider's JSON response. */
-  async invoke<T = unknown>(name: string, body: unknown = {}, opts: { version?: number } = {}): Promise<T> {
+  async invoke<T = unknown>(name: string, body: unknown = {}, opts: { version?: number; signal?: AbortSignal } = {}): Promise<T> {
     const q = opts.version ? `?version=${opts.version}` : "";
     const r = await fetch(`${this.hubUrl}/api/v1/services/${encodeURIComponent(name)}/invoke${q}`, {
       method: "POST",
       headers: { "content-type": "application/json", ...this.auth() },
       body: JSON.stringify(body ?? {}),
+      signal: opts.signal,
     });
     const text = await r.text();
     if (!r.ok) throw new Error(`invoke ${name} -> HTTP ${r.status}: ${text.slice(0, 200)}`);

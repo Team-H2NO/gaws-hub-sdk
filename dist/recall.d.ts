@@ -36,11 +36,16 @@ export interface RecallOptions {
     k?: number;
     /** The hub job this recall feeds — lets utility tracking attribute the outcome. */
     jobId?: string;
+    /** Client-side ceiling for the recall round-trip (default 15s): a dead/cold
+     *  memory-agent must never stall a build step open-endedly. */
+    timeoutMs?: number;
 }
 /** Coded recall (11 §6): thresholded, provenance-tagged, budgeted. A miss is a
  *  real, EMPTY miss — there is no recent-anyway fallback. Throws when the
- *  memory-recall service is unreachable (callers decide whether that blocks). */
+ *  memory-recall service is unreachable or slower than `timeoutMs` (callers
+ *  decide whether that blocks). */
 export declare function recall(context: RecallContext, opts?: RecallOptions): Promise<RecallResult>;
 /** Render snippets as the delimited, trust-labelled DATA block callers paste
- *  VERBATIM into a prompt (11 §6.3). Returns "" for no snippets. */
+ *  VERBATIM into a prompt (11 §6.3). Returns "" for no snippets. Snippet
+ *  title/text cannot escape the fence (marker sequences are neutralized). */
 export declare function renderRecall(snippets: RecallSnippet[] | undefined | null): string;

@@ -32,6 +32,7 @@ export class HubClient {
             method: "POST",
             headers: { "content-type": "application/json", ...this.auth() },
             body: JSON.stringify(body ?? {}),
+            signal: opts.signal,
         });
         const text = await r.text();
         if (!r.ok)
