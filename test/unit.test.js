@@ -2,7 +2,10 @@
 // the built dist (what consumers get). Run: npm test.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cleanModel, cleanEffort, claudeArgv, claudeEventToLogs, summarize, feed, served, runClaude, HubClient, startJob, hub } from "../dist/index.js";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { cleanModel, cleanEffort, claudeArgv, claudeEventToLogs, summarize, feed, served, runClaude, HubClient, startJob, hub, renderPrompt } from "../dist/index.js";
 
 test("cleanModel / cleanEffort fall back sensibly", () => {
   assert.equal(cleanModel("opus"), "opus");
@@ -132,6 +135,52 @@ test("startJob: reports service as presence, resets to idle only after the LAST 
   } finally {
     hub.presence = realP;
     globalThis.fetch = realFetch;
+  }
+});
+
+test("runJob: returns only a TERMINAL job — long-polls past a dropped stream, throws on deadline (§7.9)", async () => {
+  const realFetch = globalThis.fetch;
+  const jobId = "jT";
+  // Build a fetch that: submit → running; /events → 500 (stream drops); then getJob
+  // polls running, running, done. runJob must loop the long-poll and return done.
+  const mk = (over) => ({ ok: true, status: 200, text: async () => JSON.stringify(over), json: async () => over });
+  let pollCalls = 0;
+  const client = new HubClient("http://hub:3000", "", "", "tok");
+  try {
+    globalThis.fetch = async (url) => {
+      if (url.endsWith("/jobs")) return mk({ id: jobId, state: "running", done: false });
+      if (url.endsWith("/events")) return { ok: false, status: 500, body: null };            // stream drops
+      if (url.includes(`/jobs/${jobId}`)) { pollCalls++; return mk({ id: jobId, state: pollCalls >= 3 ? "succeeded" : "running", done: pollCalls >= 3 }); }
+      return { ok: false, status: 404, text: async () => "" };
+    };
+    const job = await client.runJob("svc", {});
+    assert.equal(job.done, true);
+    assert.equal(job.state, "succeeded");
+    assert.ok(pollCalls >= 3);                       // it looped the long-poll, didn't return the first running job
+  } finally { globalThis.fetch = realFetch; }
+
+  // deadline path: stream drops, job never terminal → throws (never returns running).
+  try {
+    globalThis.fetch = async (url) => {
+      if (url.endsWith("/jobs")) return mk({ id: jobId, state: "running", done: false });
+      if (url.endsWith("/events")) return { ok: false, status: 500, body: null };
+      return mk({ id: jobId, state: "running", done: false });   // forever running
+    };
+    await assert.rejects(client.runJob("svc", {}, { timeoutMs: 1 }), /not terminal before deadline/);
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test("renderPrompt: loads prompts/<name>.md and substitutes {{vars}} (missing → '')", () => {
+  const dir = mkdtempSync(join(tmpdir(), "gaws-prompt-"));
+  mkdirSync(join(dir, "prompts"));
+  writeFileSync(join(dir, "prompts", "greet.md"), "Hi {{who}}, build {{repo}}. {{missing}}done");
+  const cwd = process.cwd();
+  try {
+    process.chdir(dir);
+    assert.equal(renderPrompt("greet", { who: "agent", repo: "x/y" }), "Hi agent, build x/y. done");
+    assert.equal(renderPrompt("greet", { who: "a" }), "Hi a, build . done"); // missing repo/missing → ""
+  } finally {
+    process.chdir(cwd);
   }
 });
 

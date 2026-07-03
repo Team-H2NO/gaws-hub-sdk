@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { type StoreCtx } from "./client.js";
 import { type JobContext } from "./jobhost.js";
 /** Anything with a zod-style `.safeParse` (kept duck-typed to avoid a hard zod dep). */
 interface Validator {
@@ -11,6 +12,8 @@ interface Validator {
 export interface SyncContext {
     /** The calling instance id, if the hub stamped one. */
     caller?: string;
+    /** Stash a large result in the store and return `{ storeKey }` instead (§11). */
+    store: StoreCtx;
 }
 export interface SyncService {
     name: string;
@@ -18,6 +21,8 @@ export interface SyncService {
     path: string;
     method?: string;
     request?: Validator;
+    /** Optional zod schema of the response (emitted into the manifest descriptor). */
+    result?: Validator;
     handler: (input: unknown, ctx: SyncContext) => Promise<unknown> | unknown;
 }
 export interface JobService {
@@ -25,6 +30,8 @@ export interface JobService {
     kind: "job";
     path: string;
     request?: Validator;
+    /** Optional zod schema of the result (emitted into the manifest descriptor). */
+    result?: Validator;
     handler: (input: unknown, ctx: JobContext) => Promise<unknown> | unknown;
 }
 export type ServiceDef = SyncService | JobService;

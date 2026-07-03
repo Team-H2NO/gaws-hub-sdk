@@ -107,7 +107,11 @@ export class HubClient {
             }
         }
     }
-    /** Submit a job and await its terminal result, streaming progress to `onProgress`. */
+    /**
+     * Submit a job and await its TERMINAL result, streaming progress to `onProgress`.
+     * Guarantees the returned Job is `done` — if the SSE stream drops it long-polls
+     * to a deadline and throws rather than handing back a still-`running` job (§7.9).
+     */
     async runJob(name, inputs = {}, opts = {}) {
         const job = await this.submitJob(name, inputs, {
             version: opts.version, idempotencyKey: opts.idempotencyKey,
@@ -115,6 +119,7 @@ export class HubClient {
         });
         if (job.done)
             return job;
+        const deadline = Date.now() + (opts.timeoutMs ?? 60 * 60_000);
         try {
             for await (const ev of this.streamJob(job.id, { signal: opts.signal })) {
                 opts.onProgress?.(ev);
@@ -123,9 +128,29 @@ export class HubClient {
             }
         }
         catch {
-            // stream dropped — fall back to a long-poll below.
+            // stream dropped — fall through to the long-poll loop below.
         }
-        return this.getJob(job.id, { wait: "60s" });
+        let j = await this.getJob(job.id);
+        while (!j.done) {
+            if (opts.signal?.aborted)
+                throw new Error(`runJob ${name} (${job.id}) aborted`);
+            if (Date.now() > deadline)
+                throw new Error(`runJob ${name} (${job.id}) not terminal before deadline`);
+            j = await this.getJob(job.id, { wait: "30s" }); // hub long-poll; loops until terminal
+        }
+        return j; // guaranteed j.done
+    }
+    /**
+     * Put a (possibly large) value in the hub store and get back a `{ storeKey }` to
+     * return in place of an inline payload (the §11 store-a-blob pattern, one call).
+     * Throws if no store grant is wired (BUS/STORE env absent).
+     */
+    async putResult(value) {
+        const storeKey = `result/${env.instance}/${crypto.randomUUID()}`;
+        const ok = await this.storePut(storeKey, value);
+        if (!ok)
+            throw new Error("store unavailable (no store grant?) — cannot putResult");
+        return { storeKey };
     }
     // --- bus + store ----------------------------------------------------
     async busPublish(topic, msg) {
@@ -193,6 +218,8 @@ export class HubClient {
 }
 /** A client wired from the injected environment. */
 export const hub = new HubClient();
+/** The store context handed to every sync/job handler (`ctx.store.putResult`). */
+export const storeCtx = { putResult: (value) => hub.putResult(value) };
 function parseMaybeJson(text) {
     if (!text)
         return null;

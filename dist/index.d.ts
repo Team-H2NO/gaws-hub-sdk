@@ -1,8 +1,9 @@
 export { env } from "./env.js";
-export { HubClient, hub } from "./client.js";
-export type { RunJobOptions } from "./client.js";
+export { HubClient, hub, storeCtx } from "./client.js";
+export type { RunJobOptions, StoreCtx } from "./client.js";
 export { createAgent } from "./server.js";
 export type { AgentOptions, ServiceDef, SyncService, JobService, SyncContext, } from "./server.js";
+export { renderPrompt } from "./prompt.js";
 export { startJob } from "./jobhost.js";
 export type { JobContext, JobHandler } from "./jobhost.js";
 export { log } from "./log.js";

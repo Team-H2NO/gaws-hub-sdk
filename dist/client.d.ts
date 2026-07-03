@@ -8,6 +8,15 @@ export interface RunJobOptions {
     correlationId?: string;
     /** Parent job / coordinator Plan id, for the coordination job-set query (05 S6). */
     parentId?: string;
+    /** Overall deadline; past it `runJob` throws rather than returning a non-terminal job. */
+    timeoutMs?: number;
+}
+/** A place to stash a large value (over the §11 inline ceiling) and return a key for it. */
+export interface StoreCtx {
+    /** Put `value` in the hub store; returns `{ storeKey }` the caller fetches (§11). */
+    putResult(value: unknown): Promise<{
+        storeKey: string;
+    }>;
 }
 export declare class HubClient {
     private hubUrl;
@@ -39,8 +48,20 @@ export declare class HubClient {
         after?: number;
         signal?: AbortSignal;
     }): AsyncGenerator<JobEvent>;
-    /** Submit a job and await its terminal result, streaming progress to `onProgress`. */
+    /**
+     * Submit a job and await its TERMINAL result, streaming progress to `onProgress`.
+     * Guarantees the returned Job is `done` — if the SSE stream drops it long-polls
+     * to a deadline and throws rather than handing back a still-`running` job (§7.9).
+     */
     runJob<T = unknown>(name: string, inputs?: unknown, opts?: RunJobOptions): Promise<Job>;
+    /**
+     * Put a (possibly large) value in the hub store and get back a `{ storeKey }` to
+     * return in place of an inline payload (the §11 store-a-blob pattern, one call).
+     * Throws if no store grant is wired (BUS/STORE env absent).
+     */
+    putResult(value: unknown): Promise<{
+        storeKey: string;
+    }>;
     busPublish(topic: string, msg: unknown): Promise<boolean>;
     busPull<T = unknown>(topic: string): Promise<T[]>;
     storePut(key: string, value: unknown): Promise<boolean>;
@@ -66,3 +87,5 @@ export declare class HubClient {
 }
 /** A client wired from the injected environment. */
 export declare const hub: HubClient;
+/** The store context handed to every sync/job handler (`ctx.store.putResult`). */
+export declare const storeCtx: StoreCtx;

@@ -5,8 +5,11 @@
 // response (`cancelRequested`), Temporal-style.
 import { env } from "./env.js";
 import { log } from "./log.js";
-import { hub } from "./client.js";
-const HEARTBEAT_MS = 30_000;
+import { hub, storeCtx } from "./client.js";
+// Heartbeat interval AND the cancel-latency floor when the event-stream path is
+// unavailable. Lowered from 30s to 10s (§7.9) so a cancel that misses the event
+// stream still lands within 10s instead of 30s.
+const HEARTBEAT_MS = env.heartbeatMs;
 // Jobs currently running on this instance — so presence only resets to "idle"
 // when the LAST one finishes (concurrent jobs would otherwise clobber each other).
 // ponytail: a single counter; presence is single-valued per instance, so with
@@ -38,6 +41,23 @@ async function report(jobId, body, ac) {
  */
 export async function startJob(jobId, input, handler, service, corr) {
     const ac = new AbortController();
+    // Cancel path 1 (fast, ≤~1s): watch the job's own event stream and abort on a
+    // `cancel` event the hub emits on POST …/cancel (05 cancellation chain). Cancel
+    // path 2 (fallback, ≤HEARTBEAT_MS): the cancelRequested flag on each report's
+    // response — still delivered if the event stream is unavailable.
+    // ponytail: one extra long-lived SSE connection per running job; jobs are low
+    // cardinality per instance, so this is cheap.
+    void (async () => {
+        try {
+            for await (const ev of hub.streamJob(jobId, { signal: ac.signal })) {
+                if (ev.kind === "cancel" && !ac.signal.aborted) {
+                    ac.abort();
+                    return;
+                }
+            }
+        }
+        catch { /* stream dropped — the heartbeat report path still delivers cancel */ }
+    })();
     // Job-scoped logger: every ctx.log/ctx.progress also lands in Loki under this
     // job id — and under the chain's correlation id (evolution 13 §4), so one
     // Grafana corr= filter returns the whole user→job→claude trace.
@@ -47,6 +67,7 @@ export async function startJob(jobId, input, handler, service, corr) {
         jobId,
         corr,
         signal: ac.signal,
+        store: storeCtx,
         progress: (data, message) => {
             jlog.event("job.progress", message ?? "progress", { data });
             void hub.presence({ activity: message ? `${act} · ${message}` : act });

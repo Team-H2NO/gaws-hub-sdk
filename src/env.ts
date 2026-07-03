@@ -16,4 +16,12 @@ export const env = {
   agentName: process.env.AGENT_NAME || "agent",
   /** Port to serve on. */
   port: parseInt(process.env.PORT || "3000", 10),
+  /** Writable per-instance state dir (feed ring, scratch). */
+  stateDir: process.env.GAWS_STATE_DIR || "/tmp/gaws",
+  /** Contract ceiling: a sync handler must respond within this (else 504). §14. */
+  syncCeilingMs: parseInt(process.env.GAWS_SYNC_CEILING_MS || "10000", 10),
+  /** Contract ceiling: a response over this many bytes must go via the store (413). §11. */
+  maxInlineBytes: parseInt(process.env.GAWS_MAX_INLINE_BYTES || String(1024 * 1024), 10),
+  /** Job-host heartbeat / cancel fallback interval (also the cancel-latency floor). */
+  heartbeatMs: parseInt(process.env.GAWS_HEARTBEAT_MS || "10000", 10),
 };

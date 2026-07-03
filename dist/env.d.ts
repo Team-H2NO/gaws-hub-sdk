@@ -13,4 +13,12 @@ export declare const env: {
     agentName: string;
     /** Port to serve on. */
     port: number;
+    /** Writable per-instance state dir (feed ring, scratch). */
+    stateDir: string;
+    /** Contract ceiling: a sync handler must respond within this (else 504). §14. */
+    syncCeilingMs: number;
+    /** Contract ceiling: a response over this many bytes must go via the store (413). §11. */
+    maxInlineBytes: number;
+    /** Job-host heartbeat / cancel fallback interval (also the cancel-latency floor). */
+    heartbeatMs: number;
 };

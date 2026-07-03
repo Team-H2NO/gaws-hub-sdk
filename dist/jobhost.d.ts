@@ -1,3 +1,4 @@
+import { type StoreCtx } from "./client.js";
 /** Context handed to a job handler. */
 export interface JobContext {
     jobId: string;
@@ -9,6 +10,8 @@ export interface JobContext {
     progress: (data: unknown, message?: string) => Promise<void>;
     /** Emit a log line. */
     log: (line: string) => Promise<void>;
+    /** Stash a large result in the store and return a `{ storeKey }` instead (§11). */
+    store: StoreCtx;
 }
 export type JobHandler = (input: unknown, ctx: JobContext) => Promise<unknown> | unknown;
 /**
