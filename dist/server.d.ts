@@ -23,6 +23,15 @@ export interface SyncService {
     request?: Validator;
     /** Optional zod schema of the response (emitted into the manifest descriptor). */
     result?: Validator;
+    /**
+     * Per-service sync ceiling (ms), overriding `GAWS_SYNC_CEILING_MS` (§14). For a
+     * legitimately-slow-but-BOUNDED sync service — e.g. an LLM Q&A turn — set a higher
+     * bound (e.g. 120_000) instead of forcing `kind:job`. Truly unbounded/batch work
+     * still belongs in a job (for progress/cancel).
+     */
+    ceiling?: number;
+    /** Per-service inline-response byte ceiling (§11), overriding `GAWS_MAX_INLINE_BYTES`. */
+    maxInlineBytes?: number;
     handler: (input: unknown, ctx: SyncContext) => Promise<unknown> | unknown;
 }
 export interface JobService {

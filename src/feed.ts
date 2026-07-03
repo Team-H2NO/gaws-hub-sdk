@@ -39,11 +39,13 @@ const HEADER = JSON.stringify({ schema_version: SCHEMA_VERSION });
 const COMPACT_AT = MAX * 4;
 
 let diskOk = true;      // flips false and stays there once disk becomes unwritable
+let laidDown = false;   // has THIS process rewritten the file to header+ring yet?
 let sinceCompact = 0;   // appended lines since the last header+compaction rewrite
 
 // Load the persisted ring. Migrate forward; an unknown NEWER schema_version is a
-// logged refusal (start empty), never a silent field-drop (00 invariant 1); a torn
-// or bad line is skipped, not fatal.
+// logged refusal (start empty) — AND we stop writing (diskOk=false) so a rolled-back
+// binary never OVERWRITES the newer-schema file (00 invariant 1: no silent drop, and
+// not a destructive one either). A torn/bad line is skipped, not fatal.
 function load(): FeedEntry[] {
   let raw: string;
   try {
@@ -58,7 +60,8 @@ function load(): FeedEntry[] {
     const hdr = JSON.parse(lines[0]) as { schema_version?: number };
     if (typeof hdr.schema_version === "number") {
       if (hdr.schema_version > SCHEMA_VERSION) {
-        console.error(`[feed] on-disk schema_version ${hdr.schema_version} > ${SCHEMA_VERSION}; ignoring ${FILE}`);
+        console.error(`[feed] on-disk schema_version ${hdr.schema_version} > ${SCHEMA_VERSION}; not reading OR writing ${FILE} (preserving forward-written data)`);
+        diskOk = false; // do not clobber a newer-schema file
         return [];
       }
       start = 1; // header consumed
@@ -71,11 +74,14 @@ function load(): FeedEntry[] {
   return out.slice(-MAX);
 }
 
-// Rewrite the file atomically: header + the current ring. Bounds the file at MAX.
+function ensureDir(): boolean {
+  try { mkdirSync(env.stateDir, { recursive: true }); return true; } catch { diskOk = false; return false; }
+}
+
+// Rewrite the file atomically: header + the current ring. Bounds the file at MAX+1.
 function compact(): void {
-  if (!diskOk) return;
+  if (!diskOk || !ensureDir()) return;
   try {
-    mkdirSync(env.stateDir, { recursive: true });
     const tmp = `${FILE}.${process.pid}.tmp`;
     writeFileSync(tmp, [HEADER, ...buf.map((e) => JSON.stringify(e))].join("\n") + "\n");
     renameSync(tmp, FILE);
@@ -85,10 +91,13 @@ function compact(): void {
 
 function persist(entry: FeedEntry): void {
   if (!diskOk) return;
-  // On the first write (fresh process), compact to lay down the header + any
-  // reloaded backlog. Afterwards append, compacting periodically to stay bounded.
-  if (sinceCompact === 0 && buf.length <= 1) { compact(); return; }
-  if (++sinceCompact > COMPACT_AT) { compact(); return; }
+  // FIRST write of THIS process → rewrite the whole file to header+ring, bounding it
+  // to MAX+1 lines at every restart (a low-traffic/crash-looping provider otherwise
+  // appends its whole session forever). Afterwards append, compacting periodically.
+  if (!laidDown) { laidDown = true; compact(); return; }
+  if (++sinceCompact >= COMPACT_AT) { compact(); return; } // compact resets sinceCompact
+  // mkdir on the append path too: a /tmp cleaner may have removed the dir mid-run.
+  if (!ensureDir()) return;
   try {
     appendFileSync(FILE, JSON.stringify(entry) + "\n");
   } catch { diskOk = false; }

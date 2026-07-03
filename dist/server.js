@@ -24,7 +24,9 @@ export function createAgent(opts) {
     // and exit WITHOUT binding a port. `gaws-manifest` runs this and writes the block
     // into manifest.yaml; the `services-match` compliance rule diffs it against the
     // committed manifest so no drift can ship (§4.1 / L2).
-    if (process.env.GAWS_DESCRIBE) {
+    // Exactly "1" — a bare truthiness check would fire on GAWS_DESCRIBE=0/false
+    // (every non-empty string is truthy), exiting a container that must serve.
+    if (process.env.GAWS_DESCRIBE === "1") {
         const out = services.map((s) => ({
             name: s.name,
             kind: s.kind,
@@ -58,22 +60,24 @@ export function createAgent(opts) {
                 if (!checked.ok)
                     return c.json({ error: checked.error }, 400);
                 const ctx = { caller: c.req.header("x-gaws-caller-instance"), store: storeCtx };
+                const ceilingMs = svc.ceiling ?? env.syncCeilingMs;
+                const maxBytes = svc.maxInlineBytes ?? env.maxInlineBytes;
                 try {
                     // §14 sync ceiling: a sync handler must respond within the ceiling; past
                     // it the caller gets 504 (declare kind:job) and we flag a contract.violation.
-                    const raced = await withCeiling(env.syncCeilingMs, () => svc.handler(checked.value, ctx));
+                    const raced = await withCeiling(ceilingMs, () => svc.handler(checked.value, ctx));
                     if (!raced.ok) {
                         log.event("contract.violation", "sync exceeded ceiling; declare kind:job", {
-                            service: svc.name, kind: "sync", ceilingMs: env.syncCeilingMs,
+                            service: svc.name, kind: "sync", ceilingMs,
                         });
-                        return c.json({ error: "sync service exceeded ceiling; declare kind:job" }, 504);
+                        return c.json({ error: "sync service exceeded ceiling; declare kind:job (or raise its ceiling)" }, 504);
                     }
                     const out = (raced.value ?? {});
                     // §11 inline ceiling: a large response must go via the store, not inline JSON.
                     const bytes = Buffer.byteLength(JSON.stringify(out));
-                    if (bytes > env.maxInlineBytes) {
+                    if (bytes > maxBytes) {
                         log.event("contract.violation", "response exceeds inline ceiling; use the store", {
-                            service: svc.name, bytes, ceilingBytes: env.maxInlineBytes,
+                            service: svc.name, bytes, ceilingBytes: maxBytes,
                         });
                         return c.json({ error: "response too large; put it in the store and return {storeKey}", bytes }, 413);
                     }
@@ -140,8 +144,8 @@ export function createAgent(opts) {
 // The old code caught both to {}, so garbage silently validated as an empty object.
 async function readBody(c) {
     const t = await c.req.text();
-    if (!t)
-        return { ok: true, value: {} };
+    if (!t.trim())
+        return { ok: true, value: {} }; // empty OR whitespace-only → {} (a stray \n is not "malformed")
     try {
         return { ok: true, value: JSON.parse(t) };
     }
@@ -170,8 +174,10 @@ function validate(schema, input) {
     if (!schema)
         return { ok: true, value: input };
     const r = schema.safeParse(input);
+    // safeParse success ⇒ r.data is authoritative (a transform may yield null/undefined
+    // deliberately); `?? input` would discard that and hand the handler the raw input.
     if (r.success)
-        return { ok: true, value: r.data ?? input };
+        return { ok: true, value: r.data };
     return { ok: false, error: `invalid request: ${JSON.stringify(r.error)}` };
 }
 const CONTENT_TYPES = {

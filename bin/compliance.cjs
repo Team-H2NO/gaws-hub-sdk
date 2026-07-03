@@ -313,27 +313,35 @@ const decideExit = (checks) => ((checks || []).some((c) => c && c.status === "fa
 // ── evolution 08 rules: L2 services-match + L6 §11/§14/§16 static rules ─────────
 
 // Parse the manifest services[] into [{name,kind,path}] (block style; the canonical
-// form). Takes the FIRST name/kind/path per item, so a nested request schema's
-// `name:`/`path:` property keys don't shadow the service's own.
+// form). Returns null when the block can't be cleanly parsed (no block header, or
+// flow style `services: [ … ]`) — the caller degrades to WARN, never a false FAIL.
+// Takes the FIRST name/kind/path per item, matched ON THE SAME LINE so a nested
+// request schema's `name:`/`path:` child keys can't be captured across a newline.
 function parseManifestServiceList(text) {
   const lines = String(text || "").split(/\r?\n/);
-  const i = lines.findIndex((l) => /^services:[ \t]*$/.test(l));
-  if (i < 0) return null; // no services block declared
+  // block header only; a trailing inline comment is allowed. Flow `services: [` → no
+  // match → null (WARN, not FAIL).
+  const i = lines.findIndex((l) => /^services:[ \t]*(#.*)?$/.test(l));
+  if (i < 0) return null; // no block services header (absent, or flow style)
   const items = [];
   let cur = null;
   for (let j = i + 1; j < lines.length; j++) {
     const l = lines[j];
     if (/^[^\s#]/.test(l)) break; // back to a top-level key
     if (/^\s*#/.test(l) || !l.trim()) continue;
-    if (/^\s*-\s/.test(l)) { cur = { text: l }; items.push(cur); }
+    // a new item bullet: `- name: …` OR a bare `-` on its own line (fields below).
+    if (/^\s*-(\s|$)/.test(l)) { cur = { text: l }; items.push(cur); }
     else if (cur) cur.text += "\n" + l;
   }
-  const first = (t, re) => { const m = t.match(re); return m ? cleanScalar(m[1]) : undefined; };
-  return items.map((it) => ({
-    name: first(it.text, /\bname:\s*([^\s,}#]+)/),
-    kind: first(it.text, /\bkind:\s*([A-Za-z]+)/),
-    path: first(it.text, /\bpath:\s*([^\s,}#]+)/),
-  }));
+  // Match the field on the first line where the key is at LINE START (after an
+  // optional `- ` bullet) — so a nested `path:`/`name:` inside an inline
+  // `request: { … path: … }` (mid-line, not at line start) can't be captured.
+  const field = (text, key) => {
+    const re = new RegExp("^[ \\t]*(?:-[ \\t]+)?" + key + ":[ \\t]*(.*)$");
+    for (const line of text.split("\n")) { const m = line.match(re); if (m) return cleanScalar(m[1]); }
+    return undefined;
+  };
+  return items.map((it) => ({ name: field(it.text, "name"), kind: field(it.text, "kind"), path: field(it.text, "path") }));
 }
 
 // L2 services-match: the code createAgent declaration is the source; diff its
@@ -373,12 +381,24 @@ function describeServices(dir, entry) {
 
 function checkServicesMatch(dir, manifestText) {
   const label = "services-match (createAgent ⇄ manifest services[])";
-  const manifestServices = parseManifestServiceList(manifestText);
   const entry = findEntry(dir);
   if (!entry) return [{ label, status: "pass", detail: "no server entry found — skipped" }];
   const code = describeServices(dir, entry);
   if (code == null) return [{ label, status: "warn", detail: `could not run GAWS_DESCRIBE on ${entry} (npm install/build first?) — not verified` }];
-  const drift = diffServices(code, manifestServices || []);
+  const manifestServices = parseManifestServiceList(manifestText);
+  // A present-but-unparseable services block (flow style, exotic YAML) → WARN, never a
+  // hard FAIL: only diff when the manifest parsed cleanly, else we could block a
+  // legit build on a parse quirk (the whole point — services-match is the one FAIL rule).
+  if (manifestServices == null) {
+    return [{ label, status: "warn", detail: "manifest services[] not in block form (flow/absent) — not diffed; the runtime is the gate" }];
+  }
+  // Validity backstop: a well-formed service has kind ∈ {sync,job} and a path
+  // starting with "/". Anything else means the parse is untrustworthy (a nested
+  // schema key leaked in) → WARN, never a false FAIL.
+  if (manifestServices.some((s) => !s.name || !["sync", "job"].includes(s.kind) || !(s.path && s.path.startsWith("/")))) {
+    return [{ label, status: "warn", detail: "a manifest service[] entry didn't parse cleanly (name/kind∈{sync,job}/path=/…) — not diffed" }];
+  }
+  const drift = diffServices(code, manifestServices);
   return [{ label, status: drift.length ? "fail" : "pass",
     detail: drift.length ? drift.slice(0, 8).join("; ") : `${code.length} service(s) match` }];
 }

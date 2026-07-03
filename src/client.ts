@@ -139,21 +139,33 @@ export class HubClient {
     });
     if (job.done) return job;
     const deadline = Date.now() + (opts.timeoutMs ?? 60 * 60_000);
+    // Bound the STREAM by the deadline too (not just the fallback poll) — else a
+    // healthy SSE blocks for the whole real job duration and timeoutMs is ignored.
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), Math.max(0, deadline - Date.now()));
+    if (opts.signal) {
+      if (opts.signal.aborted) ac.abort();
+      else opts.signal.addEventListener("abort", () => ac.abort(), { once: true });
+    }
     try {
-      for await (const ev of this.streamJob(job.id, { signal: opts.signal })) {
-        opts.onProgress?.(ev);
-        if (ev.kind === "done") break;
+      try {
+        for await (const ev of this.streamJob(job.id, { signal: ac.signal })) {
+          opts.onProgress?.(ev);
+          if (ev.kind === "done") break;
+        }
+      } catch {
+        // stream dropped/aborted (deadline or caller signal) — fall through to poll.
       }
-    } catch {
-      // stream dropped — fall through to the long-poll loop below.
+      let j = await this.getJob(job.id);
+      while (!j.done) {
+        if (opts.signal?.aborted) throw new Error(`runJob ${name} (${job.id}) aborted`);
+        if (Date.now() > deadline) throw new Error(`runJob ${name} (${job.id}) not terminal before deadline`);
+        j = await this.getJob(job.id, { wait: "30s" }); // hub long-poll; loops until terminal
+      }
+      return j; // guaranteed j.done
+    } finally {
+      clearTimeout(timer);
     }
-    let j = await this.getJob(job.id);
-    while (!j.done) {
-      if (opts.signal?.aborted) throw new Error(`runJob ${name} (${job.id}) aborted`);
-      if (Date.now() > deadline) throw new Error(`runJob ${name} (${job.id}) not terminal before deadline`);
-      j = await this.getJob(job.id, { wait: "30s" }); // hub long-poll; loops until terminal
-    }
-    return j; // guaranteed j.done
   }
 
   /**

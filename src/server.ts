@@ -38,6 +38,15 @@ export interface SyncService {
   request?: Validator;
   /** Optional zod schema of the response (emitted into the manifest descriptor). */
   result?: Validator;
+  /**
+   * Per-service sync ceiling (ms), overriding `GAWS_SYNC_CEILING_MS` (§14). For a
+   * legitimately-slow-but-BOUNDED sync service — e.g. an LLM Q&A turn — set a higher
+   * bound (e.g. 120_000) instead of forcing `kind:job`. Truly unbounded/batch work
+   * still belongs in a job (for progress/cancel).
+   */
+  ceiling?: number;
+  /** Per-service inline-response byte ceiling (§11), overriding `GAWS_MAX_INLINE_BYTES`. */
+  maxInlineBytes?: number;
   handler: (input: unknown, ctx: SyncContext) => Promise<unknown> | unknown;
 }
 
@@ -82,7 +91,9 @@ export function createAgent(opts: AgentOptions): Hono {
   // and exit WITHOUT binding a port. `gaws-manifest` runs this and writes the block
   // into manifest.yaml; the `services-match` compliance rule diffs it against the
   // committed manifest so no drift can ship (§4.1 / L2).
-  if (process.env.GAWS_DESCRIBE) {
+  // Exactly "1" — a bare truthiness check would fire on GAWS_DESCRIBE=0/false
+  // (every non-empty string is truthy), exiting a container that must serve.
+  if (process.env.GAWS_DESCRIBE === "1") {
     const out = services.map((s) => ({
       name: s.name,
       kind: s.kind,
@@ -120,22 +131,24 @@ export function createAgent(opts: AgentOptions): Hono {
         const checked = validate(svc.request, body.value);
         if (!checked.ok) return c.json({ error: checked.error }, 400);
         const ctx: SyncContext = { caller: c.req.header("x-gaws-caller-instance"), store: storeCtx };
+        const ceilingMs = svc.ceiling ?? env.syncCeilingMs;
+        const maxBytes = svc.maxInlineBytes ?? env.maxInlineBytes;
         try {
           // §14 sync ceiling: a sync handler must respond within the ceiling; past
           // it the caller gets 504 (declare kind:job) and we flag a contract.violation.
-          const raced = await withCeiling(env.syncCeilingMs, () => svc.handler(checked.value, ctx));
+          const raced = await withCeiling(ceilingMs, () => svc.handler(checked.value, ctx));
           if (!raced.ok) {
             log.event("contract.violation", "sync exceeded ceiling; declare kind:job", {
-              service: svc.name, kind: "sync", ceilingMs: env.syncCeilingMs,
+              service: svc.name, kind: "sync", ceilingMs,
             });
-            return c.json({ error: "sync service exceeded ceiling; declare kind:job" }, 504);
+            return c.json({ error: "sync service exceeded ceiling; declare kind:job (or raise its ceiling)" }, 504);
           }
           const out = (raced.value ?? {}) as Record<string, unknown>;
           // §11 inline ceiling: a large response must go via the store, not inline JSON.
           const bytes = Buffer.byteLength(JSON.stringify(out));
-          if (bytes > env.maxInlineBytes) {
+          if (bytes > maxBytes) {
             log.event("contract.violation", "response exceeds inline ceiling; use the store", {
-              service: svc.name, bytes, ceilingBytes: env.maxInlineBytes,
+              service: svc.name, bytes, ceilingBytes: maxBytes,
             });
             return c.json({ error: "response too large; put it in the store and return {storeKey}", bytes }, 413);
           }
@@ -202,7 +215,7 @@ export function createAgent(opts: AgentOptions): Hono {
 // The old code caught both to {}, so garbage silently validated as an empty object.
 async function readBody(c: { req: { text: () => Promise<string> } }): Promise<{ ok: true; value: unknown } | { ok: false }> {
   const t = await c.req.text();
-  if (!t) return { ok: true, value: {} };
+  if (!t.trim()) return { ok: true, value: {} }; // empty OR whitespace-only → {} (a stray \n is not "malformed")
   try {
     return { ok: true, value: JSON.parse(t) };
   } catch {
@@ -231,7 +244,9 @@ async function withCeiling<T>(ms: number, fn: () => Promise<T> | T): Promise<{ o
 function validate(schema: Validator | undefined, input: unknown): { ok: true; value: unknown } | { ok: false; error: string } {
   if (!schema) return { ok: true, value: input };
   const r = schema.safeParse(input);
-  if (r.success) return { ok: true, value: r.data ?? input };
+  // safeParse success ⇒ r.data is authoritative (a transform may yield null/undefined
+  // deliberately); `?? input` would discard that and hand the handler the raw input.
+  if (r.success) return { ok: true, value: r.data };
   return { ok: false, error: `invalid request: ${JSON.stringify(r.error)}` };
 }
 
