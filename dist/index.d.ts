@@ -4,6 +4,8 @@ export type { RunJobOptions, StoreCtx } from "./client.js";
 export { createAgent } from "./server.js";
 export type { AgentOptions, ServiceDef, SyncService, JobService, SyncContext, } from "./server.js";
 export { renderPrompt } from "./prompt.js";
+export { recall, renderRecall } from "./recall.js";
+export type { RecallContext, RecallSnippet, RecallResult, RecallOptions } from "./recall.js";
 export { startJob } from "./jobhost.js";
 export type { JobContext, JobHandler } from "./jobhost.js";
 export { log } from "./log.js";

@@ -14,6 +14,7 @@ export { env } from "./env.js";
 export { HubClient, hub, storeCtx } from "./client.js";
 export { createAgent } from "./server.js";
 export { renderPrompt } from "./prompt.js";
+export { recall, renderRecall } from "./recall.js";
 export { startJob } from "./jobhost.js";
 export { log } from "./log.js";
 export { runLoop } from "./loop.js";
