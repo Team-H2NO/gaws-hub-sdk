@@ -1,0 +1,49 @@
+# SDK CI (evolution 08 L4/L5): the release gate. dist is a CI-verified artifact
+# (rebuild + fail on diff — no more hand-committed dist), unit tests, and the
+# HUB-CONFORMANCE suite must all be green before a tag is cut.
+#
+# ponytail: single-host prototype — this file documents the gate and every step is
+# runnable locally (`npm ci && npm run verify:dist && npm test && npm run conformance`).
+# The `release` job cuts the immutable tag on a push of a matching tag ref.
+name: ci
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test-conform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci || npm install
+      # L4: the committed dist must equal the tsc output (no hand-edited dist).
+      - name: verify:dist (build + diff)
+        run: npm run verify:dist
+      # unit tests (pure helpers + the §7.9 client/server behaviors).
+      - name: unit tests
+        run: npm test
+      # L5: the HUB-CONFORMANCE suite — the SDK server guards driven end to end.
+      - name: conformance
+        run: npm run conformance
+
+  release:
+    needs: build-test-conform
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci || npm install
+      - run: npm run verify:dist && npm test && npm run conformance
+      - name: publish immutable tag (GitHub release)
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

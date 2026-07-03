@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: AgentType
+name: echo
+image: gaws-hub-echo:latest
+port: 3000
+# services[] mirrors createAgent (server.js) — the services-match rule diffs them.
+services:
+  - name: echo
+    kind: sync
+    path: /api/echo
+    summary: "Mirror the request body (sync)."
+  - name: big-echo
+    kind: sync
+    path: /api/big-echo
+    summary: "Return a payload over the inline ceiling (413 target)."
+  - name: slow-sync
+    kind: sync
+    path: /api/slow-sync
+    summary: "Sleep past the sync ceiling (504 target)."
+  - name: slow-echo
+    kind: job
+    path: /api/slow-echo
+    summary: "Emit N progress ticks then return; cancellable."
