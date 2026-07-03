@@ -55,5 +55,9 @@ export interface RunClaudeOptions {
     maxTask?: number;
     /** Extend the status snapshot with extra fields (e.g. builder's phase/step). */
     status?: (summary: ClaudeSummary) => Record<string, unknown>;
+    /** Wall-clock ceiling for the run (evolution 09 §4.2): past it the child is
+     *  SIGTERM'd and the summary resolves `isError` with a timeout error — an LLM
+     *  boundary must never hold a plan open unbounded. */
+    timeoutMs?: number;
 }
 export declare function runClaude(input: ClaudeInput, emit?: ClaudeEmit, opts?: RunClaudeOptions): Promise<ClaudeSummary>;

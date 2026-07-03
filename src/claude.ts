@@ -121,6 +121,10 @@ export interface RunClaudeOptions {
   maxTask?: number;
   /** Extend the status snapshot with extra fields (e.g. builder's phase/step). */
   status?: (summary: ClaudeSummary) => Record<string, unknown>;
+  /** Wall-clock ceiling for the run (evolution 09 §4.2): past it the child is
+   *  SIGTERM'd and the summary resolves `isError` with a timeout error — an LLM
+   *  boundary must never hold a plan open unbounded. */
+  timeoutMs?: number;
 }
 
 // Ledger every run's spend (evolution 13 §5.2, D12): in-job → a `usage` block
@@ -164,6 +168,21 @@ export function runClaude(input: ClaudeInput, emit: ClaudeEmit = {}, opts: RunCl
     const child: ChildProcess = execFile(bin, argv, { env: opts.env ?? process.env, cwd: opts.cwd, maxBuffer: 64 << 20 });
     const onAbort = () => child.kill("SIGTERM");
     emit.signal?.addEventListener("abort", onAbort, { once: true });
+    // wall-clock ceiling (09 §4.2): kill the child and resolve IMMEDIATELY — a
+    // grandchild holding stdio must not delay the timeout past the ceiling
+    // (`close` waits for all stdio to drain; `resolve` is idempotent if it
+    // still fires later).
+    let timedOut = false;
+    const timer = opts.timeoutMs && opts.timeoutMs > 0
+      ? setTimeout(() => {
+          timedOut = true;
+          child.kill("SIGTERM");
+          setTimeout(() => child.kill("SIGKILL"), 5000).unref?.();
+          summary.isError = true; summary.state = "error";
+          summary.error = `claude timed out after ${opts.timeoutMs}ms (wall-clock ceiling, 09 §4.2)`;
+          resolve({ ...summary });
+        }, opts.timeoutMs)
+      : null;
     void emit.progress?.({ event: "claude.status", status: snap() }, "claude starting"); // show the bar immediately
 
     let buf = "";
@@ -195,13 +214,15 @@ export function runClaude(input: ClaudeInput, emit: ClaudeEmit = {}, opts: RunCl
       }
     });
     child.stderr?.on("data", (d) => process.stderr.write(d));
-    child.on("error", (e) => { emit.signal?.removeEventListener("abort", onAbort); resolve({ ...summary, error: `spawn failed: ${e.message} (is the claude CLI installed + credentials mounted?)`, isError: true }); });
+    child.on("error", (e) => { if (timer) clearTimeout(timer); emit.signal?.removeEventListener("abort", onAbort); resolve({ ...summary, error: `spawn failed: ${e.message} (is the claude CLI installed + credentials mounted?)`, isError: true }); });
     child.on("close", (code) => {
+      if (timer) clearTimeout(timer);
       emit.signal?.removeEventListener("abort", onAbort);
       postUsage(summary, emit.jobId, emit.corr); // spend already happened — ledger it even on error/cancel
       if (emit.signal?.aborted) return reject(new Error("cancelled")); // → job host reports the job cancelled
+      if (timedOut) { summary.isError = true; summary.state = "error"; summary.error = `claude timed out after ${opts.timeoutMs}ms (wall-clock ceiling, 09 §4.2)`; }
       // exited non-zero before producing a result → surface it (don't report a clean success).
-      if (code && !summary.isError) { summary.isError = true; summary.error = `claude exited ${code} (credentials mounted? egress allowed?)`; }
+      else if (code && !summary.isError) { summary.isError = true; summary.error = `claude exited ${code} (credentials mounted? egress allowed?)`; }
       resolve(summary);
     });
   });

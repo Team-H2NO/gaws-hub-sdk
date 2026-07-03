@@ -264,3 +264,17 @@ test("recall(): POSTs context+opts to the memory-recall invoke route", async () 
     assert.equal(body.k, 3);
   } finally { globalThis.fetch = realFetch; }
 });
+
+test("runClaude: timeoutMs kills the child and resolves isError (09 §4.2)", async () => {
+  // a fake `claude` that ignores the task and sleeps past the ceiling
+  const dir = mkdtempSync(join(tmpdir(), "claude-timeout-"));
+  const fake = join(dir, "claude");
+  writeFileSync(fake, "#!/bin/sh\nsleep 30\n");
+  const { chmodSync } = await import("node:fs");
+  chmodSync(fake, 0o755);
+  const t0 = Date.now();
+  const s = await runClaude({ task: "hi", model: "sonnet" }, {}, { bin: fake, timeoutMs: 500 });
+  assert.ok(Date.now() - t0 < 5000, "resolved well before the 30s sleep");
+  assert.equal(s.isError, true);
+  assert.match(s.error || "", /timed out after 500ms/);
+});
