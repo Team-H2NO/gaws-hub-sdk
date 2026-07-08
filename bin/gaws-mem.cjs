@@ -142,10 +142,28 @@ async function hookCmd(event) {
   try { input = JSON.parse(fs.readFileSync(0, "utf8") || "{}"); } catch { /* tolerate junk stdin */ }
   const sid = String(input.session_id || "nosession");
   const ledger = readLedger(sid);
-  const exempt = event === "post-tool-failure"; // lessons about the error in front of you outrank the budget
-  if (!exempt && (ledger.injections >= MAX_INJECTIONS || ledger.chars >= MAX_CHARS)) return;
   const context = buildContext(event, input);
   if (!context) return;
+
+  // Failure-only observation → sys.observations (15 follow-up): the hooks stand
+  // at every tool call fleet-wide, so a matched failure is published as compact
+  // MACHINE TRUTH for the episodic ledger (no LLM, publisher hub-stamped from
+  // the BUS_TOKEN). Fire-and-forget, independent of whether anything injects;
+  // healthy calls publish nothing — the old Loki firehose stays dead.
+  if (context.errorString && process.env.GAWS_MEM_OBSERVE !== "0") {
+    req("POST", "/bus/topics/sys.observations", {
+      kind: "tool.failed",
+      ref: {
+        tool: input.tool_name || null,
+        error: context.errorString.slice(0, 300),
+        sessionId: sid,
+        jobId: process.env.GAWS_JOB_ID || null,
+      },
+    }, 1500).catch(() => {});
+  }
+
+  const exempt = event === "post-tool-failure"; // lessons about the error in front of you outrank the budget
+  if (!exempt && (ledger.injections >= MAX_INJECTIONS || ledger.chars >= MAX_CHARS)) return;
 
   let out;
   try {

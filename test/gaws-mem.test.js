@@ -73,10 +73,37 @@ test("post-tool gates on the local error regex — clean output makes no network
   const n0 = calls.length;
   const clean = await runHook("post-tool", { session_id: "s3", tool_name: "Bash", tool_response: "all good\n0 problems" }, dir);
   assert.equal(clean.stdout, "");
-  assert.equal(calls.length, n0); // zero recall calls on a healthy run
+  assert.equal(calls.length, n0); // zero calls on a healthy run — no recall, no observation
   const dirty = await runHook("post-tool", { session_id: "s3", tool_name: "Bash", tool_response: "npm ERR! fatal: build failed" }, dir);
-  assert.equal(calls.length, n0 + 1);
+  assert.equal(calls.length, n0 + 2); // one observation publish + one recall
   assert.notEqual(dirty.stdout, "");
+});
+
+test("failure publishes a tool.failed observation to sys.observations", async () => {
+  const dir = tmp();
+  const before = calls.filter((c) => c.path === "/bus/topics/sys.observations").length;
+  await runHook("post-tool-failure", { session_id: "s7", tool_name: "Bash", error: "Error [ERR_REQUIRE_ESM] failed" }, dir, { GAWS_JOB_ID: "j9" });
+  const obs = calls.filter((c) => c.path === "/bus/topics/sys.observations");
+  assert.equal(obs.length, before + 1);
+  const body = JSON.parse(obs.at(-1).body);
+  assert.equal(body.kind, "tool.failed");
+  assert.equal(body.ref.tool, "Bash");
+  assert.equal(body.ref.sessionId, "s7");
+  assert.equal(body.ref.jobId, "j9");
+  assert.match(body.ref.error, /ERR_REQUIRE_ESM/);
+  // GAWS_MEM_OBSERVE=0 turns the publisher off (recall still runs)
+  const n0 = calls.filter((c) => c.path === "/bus/topics/sys.observations").length;
+  await runHook("post-tool-failure", { session_id: "s7b", error: "another failed thing" }, dir, { GAWS_MEM_OBSERVE: "0" });
+  assert.equal(calls.filter((c) => c.path === "/bus/topics/sys.observations").length, n0);
+});
+
+test("over-budget session still publishes the observation but injects nothing", async () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, "s8.ledger"), Array.from({ length: 12 }, (_, i) => `c${i}@x 10`).join("\n") + "\n");
+  const n0 = calls.filter((c) => c.path === "/bus/topics/sys.observations").length;
+  const r = await runHook("post-tool", { session_id: "s8", tool_name: "Bash", tool_response: "fatal: broken failed" }, dir);
+  assert.equal(r.stdout, ""); // budget blocks the injection (post-tool is not exempt)
+  assert.equal(calls.filter((c) => c.path === "/bus/topics/sys.observations").length, n0 + 1); // observation still flows
 });
 
 test("budget: after the cap, prompt goes silent but post-tool-failure still fires (AC-6)", async () => {
