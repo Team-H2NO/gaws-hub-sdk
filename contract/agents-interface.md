@@ -949,6 +949,11 @@ What an agent author **may assume**:
   `external` memories reach a session only through an **active** §16.1 recall.
 - The lane is **fail-open**: memory down/cold costs at most the 5s hook timeout
   and injects nothing. It can never fail a tool call or a session.
+- **Failed tool calls are observed.** A failure-matched hook also publishes a
+  compact `tool.failed` event (`{tool, error≤300ch, sessionId, jobId}`) to the
+  bus topic `sys.observations` under the instance's own `BUS_TOKEN` — machine
+  truth for the fleet's episodic ledger, no LLM involved. Healthy calls publish
+  nothing. `GAWS_MEM_OBSERVE=0` disables the publisher.
 
 What an agent author **must not assume**:
 
