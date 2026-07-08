@@ -126,6 +126,13 @@ hub picks a free provider or cold-starts one.
 - `z`, `toJsonSchema` (zod 4 → JSON Schema for manifest descriptors).
 - UI kit (browser, served at `/_gaws/agent-ui.{js,css}`): `createRunBars`,
   `createAskPanel`, `openSSE`, `jobDedup`, `persistFields`, `markdown`, `kfmt`, `clock`.
+- CLI bins: `hub` (drive the hub HTTP plane), `gaws-manifest` (emit `manifest.yaml` from
+  `GAWS_DESCRIBE=1`), `gaws-compliance` / `gaws-conformance` (contract checks), and
+  `gaws-mem` — memory `recall` / `save` / `doctor` plus `gaws-mem hook <event>`, the
+  **passive memory lane** for Claude Code (agents-interface §16.2;
+  `hooks/claude-settings.json` wires SessionStart / UserPromptSubmit / PostToolUse /
+  PostToolUseFailure): fenced recall injection with per-session dedup + budget, and
+  failure-only `tool.failed` publishing to `sys.observations`. Fail-open, always exits 0.
 
 Reads `HUB_URL` / `BUS_URL` / `STORE_URL` / `BUS_TOKEN` / `GAWS_HUB_INSTANCE` /
 `AGENT_NAME` / `PORT` from the environment — never hardcode hostnames.
