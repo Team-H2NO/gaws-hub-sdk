@@ -6,17 +6,28 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
     "./web/*": "./web/*",
-    "./contract/agents-interface.md": "./contract/agents-interface.md"
+    "./contract/agents-interface.md": "./contract/agents-interface.md",
+    "./hooks/claude-settings.json": "./hooks/claude-settings.json"
   },
   "bin": {
     "hub": "./bin/hub.cjs",
     "gaws-compliance": "./bin/compliance.cjs",
     "gaws-manifest": "./bin/manifest.cjs",
-    "gaws-conformance": "./bin/conformance.cjs"
+    "gaws-conformance": "./bin/conformance.cjs",
+    "gaws-mem": "./bin/gaws-mem.cjs"
   },
-  "files": ["dist", "src", "web", "bin", "contract"],
+  "files": [
+    "dist",
+    "src",
+    "web",
+    "bin",
+    "contract"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "node --test test/*.test.js",
@@ -32,6 +43,8 @@
     "typescript": "^5.6.3",
     "@types/node": "^22.10.0"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "license": "MIT"
 }

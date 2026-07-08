@@ -1,0 +1,17 @@
+{
+  "$comment": "Passive memory suggestion hooks (evolution 15 §3). Merge into the image's /root/.claude/settings.json. gaws-mem must be on PATH (node_modules/.bin or a symlink). Every hook fails open: memory down costs at most the timeout, never the step.",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "gaws-mem hook session-start", "timeout": 5 }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "gaws-mem hook prompt", "timeout": 5 }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "gaws-mem hook post-tool", "timeout": 5 }] }
+    ],
+    "PostToolUseFailure": [
+      { "hooks": [{ "type": "command", "command": "gaws-mem hook post-tool-failure", "timeout": 5 }] }
+    ]
+  }
+}
